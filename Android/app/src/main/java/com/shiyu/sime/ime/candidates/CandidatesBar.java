@@ -194,6 +194,10 @@ public class CandidatesBar extends FrameLayout {
         candidateScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+        // Keep a visible gap between the last candidate and the fixed
+        // expand button. The weighted scroll view ends before that button,
+        // so candidate cells can never be drawn underneath it.
+        sLp.rightMargin = dp(8);
         candidateScroll.setLayoutParams(sLp);
         candidateContainer = new LinearLayout(getContext());
         candidateContainer.setOrientation(LinearLayout.HORIZONTAL);
@@ -339,15 +343,12 @@ public class CandidatesBar extends FrameLayout {
         boolean hasCandidates = (candidates != null) && !candidates.isEmpty();
         boolean hasEnglishInput = !snap.englishBuffer.isEmpty();
         boolean englishMode = snap.mode == KeyboardMode.ENGLISH;
-        // Hide the right-edge affordance while T9 pinyin is being composed:
-        // the candidate strip needs the full width to show the final candidate.
-        // It returns automatically when composition is cleared. Keep the
-        // punctuation picker's existing hide behavior and the expanded-grid state.
-        boolean composingT9Pinyin = stateActive
-                && snap.mode == KeyboardMode.CHINESE
-                && snap.chineseLayout == com.shiyu.sime.ime.ChineseLayout.T9;
+        // Keep the right-edge button visible while composing T9 pinyin.
+        // The weighted candidate scroll view is measured only up to the
+        // button, with an additional end margin to prevent visual overlap.
+        // Preserve the punctuation-picker and expanded-grid behavior.
         expandToggleButton.setVisibility(
-                (snap.inPunctuationPicker || composingT9Pinyin || expanded) ? GONE : VISIBLE);
+                (snap.inPunctuationPicker || expanded) ? GONE : VISIBLE);
         setLanguageMode(snap.mode);
         if (stateActive || hasCandidates || hasEnglishInput) {
             showActive();

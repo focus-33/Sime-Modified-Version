@@ -72,8 +72,12 @@ public final class CandidateMenu {
     }
 
     private void open(View anchor) {
+        // A focusable PopupWindow takes window focus away from the IME.
+        // On Android 9 this can make the editor/input session restart and
+        // clear the composing state and candidate strip. Keep it non-focusable;
+        // the IME service handles BACK and dismisses this popup explicitly.
         popup = new PopupWindow(content, ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, true);
+                ViewGroup.LayoutParams.WRAP_CONTENT, false);
         popup.setOutsideTouchable(true);
         popup.setClippingEnabled(true);
         activeMenu = this;
