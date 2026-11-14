@@ -338,6 +338,8 @@ public class InputView extends LinearLayout implements InputKernel.StateObserver
                     kernel.switchMode(KeyboardMode.CLIPBOARD);
                 } else if (SettingsKeyboardView.PANEL_TEXT_EDIT.equals(panelKey)) {
                     kernel.switchMode(KeyboardMode.TEXT_EDIT);
+                } else if (SettingsKeyboardView.PANEL_SYMBOL.equals(panelKey)) {
+                    kernel.switchMode(KeyboardMode.SYMBOL);
                 }
             });
         }

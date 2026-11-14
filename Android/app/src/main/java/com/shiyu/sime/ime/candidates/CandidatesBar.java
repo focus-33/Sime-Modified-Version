@@ -339,6 +339,9 @@ public class CandidatesBar extends FrameLayout {
         boolean hasCandidates = (candidates != null) && !candidates.isEmpty();
         boolean hasEnglishInput = !snap.englishBuffer.isEmpty();
         boolean englishMode = snap.mode == KeyboardMode.ENGLISH;
+        // The T9 punctuation picker has a fixed, short list. Hide the
+        // trailing expand/dismiss affordance so it cannot cover its last symbol.
+        expandToggleButton.setVisibility(snap.inPunctuationPicker ? GONE : VISIBLE);
         setLanguageMode(snap.mode);
         if (stateActive || hasCandidates || hasEnglishInput) {
             showActive();

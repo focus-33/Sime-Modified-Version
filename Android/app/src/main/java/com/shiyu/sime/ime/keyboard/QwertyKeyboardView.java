@@ -71,11 +71,13 @@ public class QwertyKeyboardView extends KeyboardView {
     }
 
     public void setMode(KeyboardMode m) {
-        this.mode = m;
-        if (m == KeyboardMode.ENGLISH) {
-            // Reset shift when leaving Chinese — Chinese always shows
-            // uppercase, English starts lowercase.
-            shift = false;
+        if (this.mode != m) {
+            this.mode = m;
+            if (m == KeyboardMode.ENGLISH) {
+                // Entering English starts lowercase. Repeated snapshot
+                // refreshes in the same mode must not clear a latched shift.
+                shift = false;
+            }
         }
         refreshAll();
     }
