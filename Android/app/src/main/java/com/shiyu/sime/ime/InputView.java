@@ -93,13 +93,8 @@ public class InputView extends LinearLayout implements InputKernel.StateObserver
             @Override public void onHideClick() { onHideRequest.run(); }
             @Override public void onExpandToggle() { toggleExpanded(); }
             @Override public void onDismissPrediction() {
-                // ×: dismiss whichever transient strip is up — prediction
-                // (after a hanzi pick) or T9 "1 key" punctuation.
-                if (lastSnapshot != null && lastSnapshot.inPunctuationPicker) {
-                    kernel.dismissPunctuationPickerPublic();
-                } else {
-                    kernel.dismissPredictions();
-                }
+                // × is reserved for dismissing prediction strips.
+                kernel.dismissPredictions();
             }
             @Override public void onSettingsBackClick() { onSettingsBack(); }
         });
@@ -143,11 +138,9 @@ public class InputView extends LinearLayout implements InputKernel.StateObserver
             setExpanded(false);
         }
 
-        // Treat the T9 "1 key" punctuation strip the same as prediction:
-        // right-edge button becomes "×" (dismiss).
-        boolean dismissable = (state != null && state.predicting)
-                || snap.inPunctuationPicker;
-        candidatesBar.setPredicting(dismissable);
+        // Only prediction strips use the right-edge "×" dismiss button.
+        // The T9 1-key punctuation picker stays open until 1 is tapped again.
+        candidatesBar.setPredicting(state != null && state.predicting);
         candidatesBar.render(snap);
 
         if (expanded) {

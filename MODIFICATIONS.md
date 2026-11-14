@@ -1,49 +1,19 @@
-# 本次修改说明（基于 Claude 提供的 SimeApp-0.16.0-modified.zip）
+# Sime 0.16.0 — changes based on SimeApp-0.16.0-fixed.zip
 
-本次修改保留原工程结构、原 GitHub Actions 工作流和现有输入法引擎实现，没有在本地构建 APK。
+Only the requested keyboard behavior and layout were changed. No APK was built.
 
-## 修改内容
+1. T9 idle `1` key now toggles the common-symbol candidate strip. Tapping `1` again closes it. The candidate-bar `×` dismissal is no longer used for this strip; the `×` remains available for prediction strips.
+2. Removed `。` from the T9 `1`-key symbol list and added `“` and `”` as separate candidates.
+3. QWERTY shift is latched: uppercase remains active across consecutive letter inputs until shift is tapped again.
+4. Removed the QWERTY bottom-row `符号` key and the `中/EN` key beside Enter. Their combined width is distributed evenly across the remaining four side keys (`123`, comma, period, Enter); the space bar retains its width.
+5. The T9 comma key already used `KeyDef.normal`, exactly the same appearance as the T9 digit keys (`t9digit` also uses `KeyDef.normal`). Its background therefore already matched the digit-key background in the supplied source; no visual-style change was necessary.
 
-1. **首次安装后的引擎初始化**
-   - 为 `SimeEngine` 增加一次性 ready 回调。
-   - 引擎就绪后，`InputKernel` 会重新解码初始化期间已经输入的内容，并更新上下文长度。
-   - 每次输入视图启动时检查并补充启动引擎，避免一次启动失败后一直停留在未就绪状态。
+Files changed:
+- `Android/app/src/main/java/com/shiyu/sime/ime/InputKernel.java`
+- `Android/app/src/main/java/com/shiyu/sime/ime/InputView.java`
+- `Android/app/src/main/java/com/shiyu/sime/ime/keyboard/T9KeyboardView.java`
+- `Android/app/src/main/java/com/shiyu/sime/ime/keyboard/QwertyKeyboardView.java`
+- `Android/app/src/main/java/com/shiyu/sime/ime/keyboard/layouts/QwertyLayout.java`
+- `Android/app/src/main/java/com/shiyu/sime/ime/keyboard/layouts/T9Layout.java` (comment only, documents existing matching key appearance)
 
-2. **九宫格 1 键符号候选**
-   - 符号候选显示期间按删除键，不再关闭符号候选状态。
-   - 删除宿主文本后仍可直接点选原候选区中的符号并上屏。
-
-3. **个人字典**
-   - 原“常用语”入口改名为“个人字典”。
-   - 每条词条保存“输出文字 + 自定义拼音字母组合”。
-   - 全键盘按拼音字母匹配；九宫格按 T9 数字映射匹配。
-   - 匹配的个人字典词条置于解码候选队列最前面。
-   - 原有只保存文字的旧词条仍可读取和手动点选；编辑旧词条时需要补充拼音。
-
-4. **文本编辑面板**
-   - 第一行调整为“全选、复制、上移、粘贴、删除”。
-   - 第三行调整为“取消、行首、下移、行尾、空格”。
-   - “返回”改为“取消”；该键折叠当前文本选择并退出选择模式，不再离开文本编辑面板。
-
-5. **九宫格快捷键和标点**
-   - 候选栏原“表情”位置改为“简繁转换”。
-   - 候选栏原“简繁转换”位置改为“中/EN”语言切换快捷键。
-   - 空格右侧按键改为中文逗号：短按输出“，”，长按（300 ms）输出“。”。
-   - 左侧空闲快捷符号栏不再单独显示“，”和“。”，其余符号顺位显示。
-
-6. **移除表情功能**
-   - 删除 Android 表情面板、数据类、设置入口和候选栏快捷入口。
-   - GitHub 工作流和模型校验清单不再下载、打包无用的 `emoji.txt`。
-
-## 检查情况
-
-- 已检查删除表情功能后的 Java 引用，没有发现残留的 `EmojiPanelView`、`EmojiStore`、`KeyboardMode.EMOJI` 或相关资源引用。
-- 已对 Android XML 文件进行解析检查。
-- 已进行 Java 语法层面的静态检查，并为引擎就绪重解码、个人字典候选优先级、符号候选删除后仍可选择增加了单元测试。
-- **未执行 Gradle 构建或 APK 测试**，符合本次“由用户在 GitHub 上构建”的要求。Pixel 3 上的实际行为仍需在 GitHub 构建后验证。
-
-## 后续修复
-
-1. **个人字典词条在九宫格下不出现**：九宫格输入的是数字串，而词条保存的是拼音字母，原代码直接拿字母和数字比较，永远不相等。现在九宫格下会把词条拼音转成按键数字再比较（全键盘仍按字母比较）。
-2. **点击个人字典“+”（以及编辑词条）打开编辑窗口时**：键盘自动退回之前的输入面板（九宫格），不再停留在个人字典页面。
-3. **候选栏快捷图标**：“简繁转换”改为文字图标“简/繁”，与“中/EN”一致；当前生效的一半粗体显示，另一半正常字重。剪贴板图标重绘为 Gboard 风格的描边图标（板 + 夹子 + 两行字）。
+Build and Pixel 3 runtime verification have not been performed.

@@ -163,8 +163,8 @@ public class T9KeyboardView extends KeyboardView {
                 if (active) {
                     emit(SimeKey.separator());
                 } else {
-                    // Idle: open the T9 "1 key" punctuation picker in
-                    // the candidate bar (matches phone IME convention).
+                    // Idle: toggle the T9 "1 key" punctuation picker.
+                    // A second tap on 1 closes the same candidate strip.
                     emit(SimeKey.numPunctuation());
                 }
             });

@@ -15,7 +15,7 @@ import com.shiyu.sime.ime.theme.Typography;
  *   Row 1: q w e r t y u i o p   (hints: 1 2 3 4 5 6 7 8 9 0)
  *   Row 2:  a s d f g h j k l    (hints: @ # $ % & * - + =)
  *   Row 3: ⇧/分词 z x c v b n m ⌫  (hints: ' " : ; ! ? / on letters)
- *   Row 4: 123 | , | space | 中\n英/EN | 换行/确定
+ *   Row 4: 123 | , | space | . | 换行/确定
  * </pre>
  */
 public final class QwertyLayout {
@@ -88,18 +88,18 @@ public final class QwertyLayout {
         // so c starts at 3.5 and b ends at 6.5 → space = 3.5..6.5.
         // Each side then contributes 3.5 weight units.
         KeyRow.Builder r4 = KeyRow.builder(0.95f);
-        r4.key(KeyDef.function("符号", SimeKey.toSymbol()).width(1.25f).labelSize(Typography.SMALL));
-        r4.key(KeyDef.function("123", SimeKey.toNumber()).width(1.25f).labelSize(Typography.SMALL));
+        // Remove the bottom-left 符号 key and the 中/英 key beside 换行.
+        // Their combined width is redistributed evenly across the four
+        // remaining side keys; the space bar keeps its original width.
+        r4.key(KeyDef.function("123", SimeKey.toNumber()).width(1.875f).labelSize(Typography.SMALL));
         r4.key(KeyDef.normal(",", SimeKey.punctuation(","))
-                .id(ID_COMMA).labelSize(Typography.BODY));
+                .id(ID_COMMA).width(1.625f).labelSize(Typography.BODY));
         r4.key(KeyDef.normal("空格", SimeKey.space()).width(3f).labelSize(Typography.SMALL)
                 .longPress(SimeKey.toggleLang()));
         r4.key(KeyDef.normal(".", SimeKey.punctuation("."))
-                .id(ID_PERIOD).labelSize(Typography.BODY));
-        r4.key(KeyDef.function("中", SimeKey.toggleLang())
-                .id(ID_LANG).width(1.25f).labelSize(Typography.SMALL));
+                .id(ID_PERIOD).width(1.625f).labelSize(Typography.BODY));
         r4.key(KeyDef.function("换行", SimeKey.enter())
-                .id(ID_ENTER).width(1.25f).labelSize(Typography.SMALL));
+                .id(ID_ENTER).width(1.875f).labelSize(Typography.SMALL));
         b.row(r4);
 
         return b.build();

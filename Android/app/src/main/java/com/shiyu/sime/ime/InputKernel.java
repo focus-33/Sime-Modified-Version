@@ -184,7 +184,7 @@ public class InputKernel {
 
     /** Punctuation shown by the T9 "1 key" picker, in display order. */
     private static final String[] T9_NUM_PUNCTUATION = {
-            "@", "#", "*", "+", "。", "~", "(", ")", "、"
+            "@", "#", "*", "+", "~", "(", ")", "、", "“", "”"
     };
     private List<PinyinAlt> pinyinAlts = Collections.emptyList();
     /** Segmented pinyin string of the current top candidate, for preedit. */
@@ -500,6 +500,11 @@ public class InputKernel {
     }
 
     private void showPunctuationPicker() {
+        // The T9 1-key picker is a toggle: tapping 1 again closes it.
+        if (inPunctuationPicker) {
+            dismissPunctuationPicker(/*publish=*/true);
+            return;
+        }
         if (!isChineseLike()) {
             fireCommitText(T9_NUM_PUNCTUATION[0]);
             return;

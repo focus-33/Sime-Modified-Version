@@ -95,6 +95,7 @@ public final class T9Layout {
                         .key(KeyDef.normal  ("空格", SimeKey.space())
                                 .width(1.5f).labelSize(Typography.SMALL)
                                 .longPress(SimeKey.toggleLang()))
+                        // NORMAL appearance intentionally matches the 1–9 digit keys.
                         .key(KeyDef.normal("，", SimeKey.punctuation("，"))
                                 .width(0.75f).labelSize(Typography.BODY)
                                 .longPress(SimeKey.punctuation("。"))))

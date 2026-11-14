@@ -17,8 +17,8 @@ import java.util.Map;
  *
  * <ul>
  *   <li><b>case</b>: Chinese mode shows uppercase letters. English mode
- *       follows the local {@link #shift} flag (default lowercase, shift
- *       toggles to uppercase for one tap).
+ *       follows the local {@link #shift} flag (default lowercase; shift
+ *       toggles and remains uppercase until tapped again).
  *   <li><b>shift / 分词 key</b> (left of row 3): English shows
  *       {@code ⇧} and toggles shift on click; Chinese shows
  *       {@code 分词} and emits {@link SimeKey#separator()}.
@@ -101,10 +101,8 @@ public class QwertyKeyboardView extends KeyboardView {
         if (shift && key.type == KeyType.LETTER) {
             char upper = Character.toUpperCase(key.ch);
             super.emit(SimeKey.letter(upper));
-            // iOS-style: shift auto-releases after one letter so the
-            // next tap returns to lowercase.
-            shift = false;
-            refreshLetters();
+            // Shift is latched: keep uppercase active until the user
+            // taps the shift key again.
             return;
         }
         // Chinese mode: rewrite half-width punctuation to its full-width
@@ -124,8 +122,8 @@ public class QwertyKeyboardView extends KeyboardView {
     /**
      * Shift key:
      * <ul>
-     *   <li>Click (any mode): toggle {@link #shift} → next letter is
-     *       uppercase.</li>
+     *   <li>Click (any mode): toggle {@link #shift}; letters remain
+     *       uppercase until the key is tapped again.</li>
      *   <li>Long-press in Chinese mode: emit a pinyin separator
      *       ({@code '}). English mode long-press is a no-op.</li>
      * </ul>
