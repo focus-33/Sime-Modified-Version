@@ -34,6 +34,7 @@ public final class CandidateMenu {
     private final Callback callback;
     private final LinearLayout content;
     private PopupWindow popup;
+    private static CandidateMenu activeMenu;
 
     private CandidateMenu(Context ctx, SimeTheme theme, Callback cb) {
         this.ctx = ctx;
@@ -54,15 +55,31 @@ public final class CandidateMenu {
 
     /** Show the menu just below {@code anchor}. */
     public static void show(View anchor, SimeTheme theme, Callback cb) {
+        dismissActive();
         CandidateMenu m = new CandidateMenu(anchor.getContext(), theme, cb);
         m.open(anchor);
     }
 
+    /** Dismiss the currently visible candidate menu, if any. */
+    public static boolean dismissActive() {
+        CandidateMenu menu = activeMenu;
+        if (menu == null || menu.popup == null || !menu.popup.isShowing()) {
+            activeMenu = null;
+            return false;
+        }
+        menu.dismiss();
+        return true;
+    }
+
     private void open(View anchor) {
         popup = new PopupWindow(content, ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT, false);
+                ViewGroup.LayoutParams.WRAP_CONTENT, true);
         popup.setOutsideTouchable(true);
         popup.setClippingEnabled(true);
+        activeMenu = this;
+        popup.setOnDismissListener(() -> {
+            if (activeMenu == this) activeMenu = null;
+        });
         content.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         int[] loc = new int[2];
         anchor.getLocationOnScreen(loc);
@@ -81,6 +98,9 @@ public final class CandidateMenu {
         if (popup != null) {
             try { popup.dismiss(); } catch (RuntimeException ignored) { }
             popup = null;
+        }
+        if (activeMenu == this) {
+            activeMenu = null;
         }
     }
 

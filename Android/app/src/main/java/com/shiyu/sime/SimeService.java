@@ -145,6 +145,15 @@ public class SimeService extends InputMethodService
     }
 
     @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK
+                && com.shiyu.sime.ime.candidates.CandidateMenu.dismissActive()) {
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
     public void onStartInput(EditorInfo attribute, boolean restarting) {
         super.onStartInput(attribute, restarting);
         // Pick up any layout change made in SettingsActivity since we last ran.

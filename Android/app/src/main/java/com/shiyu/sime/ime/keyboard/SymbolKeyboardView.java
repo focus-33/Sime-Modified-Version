@@ -26,8 +26,8 @@ public class SymbolKeyboardView extends KeyboardView {
 
     /** Width per tab key inside the scrollable strip. */
     private static final int TAB_WIDTH_DP = 52;
-    /** Width of the pinned ← side key. */
-    private static final int SIDE_KEY_WIDTH_DP = 48;
+    /** Width of the pinned ← side key: two normal category-key positions. */
+    private static final int SIDE_KEY_WIDTH_DP = 104;
 
     private KeyboardContainer grid;
     private final KeyView[] tabKeys = new KeyView[SymbolLayout.tabCount()];
@@ -62,7 +62,7 @@ public class SymbolKeyboardView extends KeyboardView {
         bar.setPadding(0, 0, 0, 0);
 
         bar.addView(
-                makeKey(KeyDef.function("←", SimeKey.toBack()).labelSize(Typography.CALLOUT).build()),
+                makeKey(KeyDef.function("←", SimeKey.toBack()).labelSize(Typography.TITLE).build()),
                 new LinearLayout.LayoutParams(dp(SIDE_KEY_WIDTH_DP), LinearLayout.LayoutParams.MATCH_PARENT));
 
         HorizontalScrollView scroll = new HorizontalScrollView(getContext());

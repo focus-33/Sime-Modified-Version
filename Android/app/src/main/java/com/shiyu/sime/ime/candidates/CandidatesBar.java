@@ -339,9 +339,15 @@ public class CandidatesBar extends FrameLayout {
         boolean hasCandidates = (candidates != null) && !candidates.isEmpty();
         boolean hasEnglishInput = !snap.englishBuffer.isEmpty();
         boolean englishMode = snap.mode == KeyboardMode.ENGLISH;
-        // The T9 punctuation picker has a fixed, short list. Hide the
-        // trailing expand/dismiss affordance so it cannot cover its last symbol.
-        expandToggleButton.setVisibility(snap.inPunctuationPicker ? GONE : VISIBLE);
+        // Hide the right-edge affordance while T9 pinyin is being composed:
+        // the candidate strip needs the full width to show the final candidate.
+        // It returns automatically when composition is cleared. Keep the
+        // punctuation picker's existing hide behavior and the expanded-grid state.
+        boolean composingT9Pinyin = stateActive
+                && snap.mode == KeyboardMode.CHINESE
+                && snap.chineseLayout == com.shiyu.sime.ime.ChineseLayout.T9;
+        expandToggleButton.setVisibility(
+                (snap.inPunctuationPicker || composingT9Pinyin || expanded) ? GONE : VISIBLE);
         setLanguageMode(snap.mode);
         if (stateActive || hasCandidates || hasEnglishInput) {
             showActive();

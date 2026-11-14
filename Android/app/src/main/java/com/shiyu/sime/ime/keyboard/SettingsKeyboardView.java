@@ -153,7 +153,7 @@ public class SettingsKeyboardView extends KeyboardView {
                 () -> prefs.getPredictionEnabled());
         return SettingsNode.category("设置",
                 keyboardCat, clipboard, quickPhrase, textEdit,
-                vibration, traditional, prediction, symbols);
+                vibration, traditional, symbols, prediction);
     }
 
     private void push(SettingsNode node) {
