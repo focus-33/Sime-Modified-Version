@@ -71,4 +71,14 @@ public interface Decoder {
      * the block on a word the user has typed out by hand. Default no-op.
      */
     default void onUserCommit(String text) {}
+
+    /**
+     * Best-guess pinyin (apostrophe separated) for a run of nine-key
+     * digits, used only to show letters instead of digits in the preedit.
+     * Default: the top full decode; empty when nothing matches.
+     */
+    default String bestNumUnits(String digits) {
+        DecodeResult[] r = decodeNumSentence("", digits, 0);
+        return (r.length > 0 && r[0].units != null) ? r[0].units : "";
+    }
 }

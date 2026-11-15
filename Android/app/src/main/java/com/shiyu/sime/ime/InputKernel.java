@@ -1084,6 +1084,9 @@ public class InputKernel {
         if (!topU.isEmpty()) {
             int rawLen = PinyinUtil.countRealChars(bufferLetters) + PinyinUtil.countRealChars(digits);
             topU = clipUnitsToLetterCount(topU, rawLen);
+            if (chineseLayout == ChineseLayout.T9 && !digits.isEmpty()) {
+                topU = extendUnitsForUncoveredDigits(topU, digits, rawLen);
+            }
         }
         topUnits = topU;
 
@@ -1117,6 +1120,26 @@ public class InputKernel {
             else return "";
         }
         return digits.toString();
+    }
+
+    /**
+     * The top candidate often covers only the first syllables of a longer
+     * nine-key input, so the preedit would show the rest as raw digits
+     * (e.g. "pi57"). Fill the uncovered tail with the best-guess pinyin of
+     * those digits so the hint stays readable while typing a phrase.
+     */
+    private String extendUnitsForUncoveredDigits(String units, String digits, int rawLen) {
+        String dd = digits.replace("'", "");
+        for (int i = 0; i < 4; i++) {
+            int missing = rawLen - PinyinUtil.countRealChars(units);
+            if (missing <= 0 || missing > dd.length()) break;
+            String guess = decoder.bestNumUnits(dd.substring(dd.length() - missing));
+            if (guess == null || guess.isEmpty()) break;
+            guess = clipUnitsToLetterCount(guess, missing);
+            if (guess.isEmpty()) break;
+            units = units + "'" + guess;
+        }
+        return units;
     }
 
     private static String clipUnitsToLetterCount(String units, int maxLetters) {

@@ -69,7 +69,7 @@ public final class TunedDecoder implements Decoder {
                 }
             }
         }
-        return finish(merge(orig, extras));
+        return finish(limitLongSentences(merge(orig, extras)));
     }
 
     // ===== Nine-key =====
@@ -96,7 +96,7 @@ public final class TunedDecoder implements Decoder {
         if (mask != 0 && digits != null) {
             addDigitVariants(extras, orig, start, digits, mask, limit);
         }
-        return finish(demoteWeakSentences(merge(orig, extras)));
+        return finish(limitLongSentences(demoteWeakSentences(merge(orig, extras))));
     }
 
     private void addDigitVariants(List<DecodeResult> extras, DecodeResult[] orig,
@@ -174,6 +174,17 @@ public final class TunedDecoder implements Decoder {
         return out.toArray(new DecodeResult[0]);
     }
 
+    @Override
+    public String bestNumUnits(String digits) {
+        if (digits == null || digits.isEmpty()) return "";
+        if (digits.length() == 1 && digits.charAt(0) >= '2' && digits.charAt(0) <= '9') {
+            DecodeResult[] lone = loneKey(digits.charAt(0), 0);
+            return lone.length > 0 ? lone[0].units : "";
+        }
+        DecodeResult[] r = base.decodeNumSentence("", digits, 0);
+        return (r.length > 0 && r[0].units != null) ? r[0].units : "";
+    }
+
     // ===== Pass-through =====
 
     @Override
@@ -217,6 +228,78 @@ public final class TunedDecoder implements Decoder {
         int syl = r.units.split("'").length;
         if (syl < WEAK_MIN_SYLLABLES || syl > WEAK_MAX_SYLLABLES) return false;
         return r.score / syl < WEAK_SENTENCE_PER_SYLLABLE;
+    }
+
+    // ===== Long phrases / sentences: show fewer, more useful candidates =====
+
+    /**
+     * Beyond the very first candidate, extra whole-input sentences are
+     * almost never picked, so they only get in the way. Rules, applied to
+     * the candidates that cover the whole input:
+     * <ul>
+     *   <li>up to 3 syllables: unchanged;</li>
+     *   <li>4 syllables (a four-character word): keep 2;</li>
+     *   <li>5 or more syllables: keep 1.</li>
+     * </ul>
+     * The candidates that follow are those for the first word of the
+     * sentence (the longest word that starts the best sentence goes
+     * first), then shorter words and single characters; after the user
+     * picks, the next word's candidates appear the same way.
+     */
+    static List<DecodeResult> limitLongSentences(List<DecodeResult> in) {
+        int full = 0;
+        for (DecodeResult r : in) if (isChinese(r)) full = Math.max(full, r.consumed);
+        if (full <= 0) return in;
+        // Whole-input candidates, real ones before stitched-together ones.
+        List<DecodeResult> solid = new ArrayList<>();
+        List<DecodeResult> weak = new ArrayList<>();
+        for (DecodeResult r : in) {
+            if (!isChinese(r) || r.consumed != full) continue;
+            if (isWeakSentence(r, full)) weak.add(r); else solid.add(r);
+        }
+        DecodeResult top = !solid.isEmpty() ? solid.get(0)
+                : (!weak.isEmpty() ? weak.get(0) : null);
+        if (top == null) return in;
+        int syllables = top.units.split("'").length;
+        if (syllables <= 3) return in;
+        final int keepFull = (syllables == 4) ? 2 : 1;
+
+        Set<DecodeResult> keep = java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<DecodeResult, Boolean>());
+        for (DecodeResult r : solid) { if (keep.size() < keepFull) keep.add(r); }
+        for (DecodeResult r : weak) { if (keep.size() < keepFull) keep.add(r); }
+
+        List<DecodeResult> lead = new ArrayList<>();   // kept real sentences, first
+        List<DecodeResult> rest = new ArrayList<>(in.size());
+        for (DecodeResult r : in) {
+            boolean wholeInput = isChinese(r) && r.consumed == full;
+            if (wholeInput && !keep.contains(r)) continue;       // dropped
+            if (wholeInput && !isWeakSentence(r, full)) lead.add(r);
+            else rest.add(r);
+        }
+        List<DecodeResult> out = new ArrayList<>(lead);
+        out.addAll(rest);
+
+        // Put the first word of the best sentence right after the kept
+        // sentence(s): the longest shorter candidate the sentence starts with.
+        int insertAt = lead.size();
+        int best = -1;
+        for (int i = 0; i < out.size(); i++) {
+            DecodeResult r = out.get(i);
+            if (!isChinese(r) || r.consumed >= full) continue;
+            if (!top.text.startsWith(r.text)) continue;
+            if (best < 0 || r.text.length() > out.get(best).text.length()) best = i;
+        }
+        if (best >= 0 && best != insertAt) {
+            DecodeResult first = out.remove(best);
+            out.add(Math.min(insertAt, out.size()), first);
+        }
+        return out;
+    }
+
+    private static boolean isChinese(DecodeResult r) {
+        return r.text != null && !r.text.isEmpty() && !isAscii(r.text)
+                && r.units != null && !r.units.isEmpty();
     }
 
     // ===== Merge =====
