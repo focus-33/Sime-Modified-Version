@@ -184,7 +184,7 @@ public class InputKernel {
 
     /** Punctuation shown by the T9 "1 key" picker, in display order. */
     private static final String[] T9_NUM_PUNCTUATION = {
-            "@", "#", "*", "+", "~", "(", ")", "、", "“", "”"
+            "@", "#", "*", "+", "～", "(", ")", "——", "“", "”"
     };
     private List<PinyinAlt> pinyinAlts = Collections.emptyList();
     /** Segmented pinyin string of the current top candidate, for preedit. */
@@ -299,7 +299,7 @@ public class InputKernel {
         });
     }
 
-    /** Controls spacing between consecutive English prediction candidates. */
+    /** Kept for compatibility; automatic English word spacing is removed. */
     public void setAutoSpaceEnglishWords(boolean enabled) {
         engineRunner.post(() -> this.autoSpaceEnglishWords = enabled);
     }
@@ -613,8 +613,7 @@ public class InputKernel {
     private void handleSpace() {
         if (mode == KeyboardMode.ENGLISH) {
             if (englishBuffer.length() > 0) {
-                // Space confirms the current English text without appending
-                // an additional trailing space.
+                // Commit the word only; no trailing space is added.
                 commitEnglishBuffer();
             } else {
                 fireCommitText(" ");
@@ -639,7 +638,7 @@ public class InputKernel {
     private void handleEnter() {
         if (mode == KeyboardMode.ENGLISH) {
             if (englishBuffer.length() > 0) {
-                // Confirm the current English text without appending a space.
+                // Confirm the word only; no trailing space is added.
                 commitEnglishBuffer();
             } else {
                 fireSendEnter();
@@ -896,14 +895,13 @@ public class InputKernel {
         showPredictions(false);
     }
 
-    /** Commit a prediction, adding a space between consecutive English words. */
+    /**
+     * Commit a picked prediction / completion exactly as it is. No space
+     * is added before or after it (the old automatic English word spacing
+     * was removed on request); the user types a space when they want one.
+     */
     private void commitPredictionText(String text) {
-        if (autoSpaceEnglishWords && previousCommitEndsWithAsciiWord
-                && startsWithAsciiWord(text)) {
-            fireCommitText(" " + text);
-        } else {
-            fireCommitText(text);
-        }
+        fireCommitText(text);
         previousCommitEndsWithAsciiWord = endsWithAsciiWord(text);
     }
 
@@ -912,11 +910,10 @@ public class InputKernel {
         DecodeResult c = candidates.get(index);
         state.pushContext(c.tokenIds);
         englishBuffer.setLength(0);
-        // English completion is committed exactly as selected. Do not
-        // inject the automatic inter-word space used by prediction mode.
-        String text = tradTextOf(c);
-        fireCommitText(text);
-        previousCommitEndsWithAsciiWord = false;
+        // English completion is for English buffer — trad doesn't apply
+        // (English text doesn't get converted), but call through anyway
+        // for consistency.
+        commitPredictionText(tradTextOf(c));
         fireSetComposingText("");
         showPredictions(true);
     }
@@ -1286,11 +1283,19 @@ public class InputKernel {
         publish();
     }
 
-    /** Commit the current English preedit without adding trailing whitespace. */
+    /**
+     * Commit the English buffer as-is (user pressed space without
+     * picking a completion).
+     */
     private void commitEnglishBuffer() {
+        commitEnglishBuffer(false);
+    }
+
+    /** Commit the current English preedit; space is explicit when requested. */
+    private void commitEnglishBuffer(boolean appendSpace) {
         String text = englishBuffer.toString();
         englishBuffer.setLength(0);
-        fireCommitText(text);
+        fireCommitText(appendSpace ? text + " " : text);
         previousCommitEndsWithAsciiWord = endsWithAsciiWord(text);
         fireSetComposingText("");
         candidates = Collections.emptyList();

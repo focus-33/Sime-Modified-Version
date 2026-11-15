@@ -536,6 +536,9 @@ public class CandidatesBar extends FrameLayout {
                 ? 0 : Math.min(candidates.size(), MAX_STRIP_CANDIDATES);
         int totalCells = candCount + (hasBufferCell ? 1 : 0);
         this.activeCandidateCount = totalCells;
+        // A new candidate list (e.g. the next syllable after picking a word)
+        // always starts from its first candidate, not the old scroll spot.
+        resetCandidateScroll();
 
         // Grow the pool to cover the current candidate count. New
         // entries are appended in pair order (candidate then divider)
@@ -657,6 +660,15 @@ public class CandidatesBar extends FrameLayout {
                     ? com.shiyu.sime.R.drawable.ic_bar_back
                     : com.shiyu.sime.R.drawable.ic_bar_gear);
         }
+    }
+
+    /** Scroll the candidate strip back to its first candidate. */
+    private void resetCandidateScroll() {
+        if (candidateScroll == null) return;
+        candidateScroll.scrollTo(0, 0);
+        // Again after layout: the container was just re-bound and the
+        // scroll view may clamp or keep the previous offset until then.
+        candidateScroll.post(() -> candidateScroll.scrollTo(0, 0));
     }
 
     /**

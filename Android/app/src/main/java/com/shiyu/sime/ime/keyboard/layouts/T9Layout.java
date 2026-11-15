@@ -80,9 +80,10 @@ public final class T9Layout {
     }
 
     /**
-     * Center bottom row: 123 (narrow) | 空格 (wide) | 中\n英 (narrow).
+     * Center bottom row: ，(narrow) | 空格 (wide) | 123 (narrow).
      * Spans 3 unit widths to match the digit grid above. 空格 is
-     * wider because it's the most-typed cell here.
+     * wider because it's the most-typed cell here. The comma key uses
+     * the same gray function-key look as 123.
      */
     public static KeyboardLayout buildCenterBottomRow() {
         return KeyboardLayout.builder()
@@ -90,9 +91,7 @@ public final class T9Layout {
                 .verticalPadding(0)
                 .keyMargin(3)
                 .row(KeyRow.builder(1f)
-                        // Comma and number-layout keys exchange positions.
-                        // NORMAL appearance intentionally matches the 1–9 digit keys.
-                        .key(KeyDef.normal("，", SimeKey.punctuation("，"))
+                        .key(KeyDef.function("，", SimeKey.punctuation("，"))
                                 .width(0.75f).labelSize(Typography.BODY)
                                 .longPress(SimeKey.punctuation("。")))
                         .key(KeyDef.normal  ("空格", SimeKey.space())

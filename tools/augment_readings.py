@@ -76,10 +76,10 @@ def main():
     ap.add_argument('--rime', required=True, nargs='+',
                     help='雾凇 cn_dicts 目录，或具体的 *.dict.yaml 文件')
     ap.add_argument('--out', required=True, help='输出给 sime-converter 的 --cn 文件')
-    ap.add_argument('--min-ratio', type=float, default=0.10,
-                    help='新读音权重至少是该词最高权重的这个比例（默认 0.10，调小会多收冷僻读音）')
-    ap.add_argument('--max-readings', type=int, default=3,
-                    help='每个词最多保留的读音数（默认 3）')
+    ap.add_argument('--min-ratio', type=float, default=0.02,
+                    help='新读音权重至少是该词最高权重的这个比例（默认 0.02，调小会多收冷僻读音）')
+    ap.add_argument('--max-readings', type=int, default=4,
+                    help='每个词最多保留的读音数（默认 4）')
     ap.add_argument('--show', type=int, default=25, help='打印多少条新增示例')
     args = ap.parse_args()
 

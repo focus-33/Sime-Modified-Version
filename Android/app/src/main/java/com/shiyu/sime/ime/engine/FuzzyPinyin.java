@@ -16,12 +16,15 @@ public final class FuzzyPinyin {
     public static final int Z_ZH = 1;
     public static final int C_CH = 2;
     public static final int S_SH = 4;
-    public static final int UN_ONG = 8;
+    /** xue <-> xie. */
+    public static final int XUE_XIE = 8;
     public static final int EN_ENG = 16;
     public static final int IN_ING = 32;
-    public static final int L_N = 64;
-    public static final int F_H = 128;
-    public static final int DEFAULT_MASK = Z_ZH | C_CH | S_SH | UN_ONG | EN_ENG | IN_ING;
+    /** Finals un <-> ong, e.g. lun <-> long, dun <-> dong, yun <-> yong. */
+    public static final int UN_ONG = 64;
+    /** Finals iong <-> ong: a typed xong / qong / jong also tries xiong / qiong / jiong. */
+    public static final int IONG_ONG = 128;
+    public static final int DEFAULT_MASK = Z_ZH | C_CH | S_SH | XUE_XIE | EN_ENG | IN_ING;
     private static final int MAX_VARIANTS = 6;
 
     private static final Set<String> SYLLABLES = new HashSet<>(Arrays.asList((
@@ -49,6 +52,14 @@ public final class FuzzyPinyin {
     private static final Set<String> INITIALS = new HashSet<>(Arrays.asList(
             "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x",
             "zh", "ch", "sh", "r", "z", "c", "s", "y", "w"));
+
+    /**
+     * Spellings people type for j/q/x + iong when they drop the i. They are
+     * not real syllables, so they are only recognised when the iong/ong
+     * rule is on, and they only ever map to the real syllable.
+     */
+    private static final Set<String> PSEUDO = new HashSet<>(Arrays.asList(
+            "jong", "qong", "xong"));
 
     private FuzzyPinyin() {}
 
@@ -92,7 +103,8 @@ public final class FuzzyPinyin {
     }
 
     /** Split pinyin into syllable-like tokens; seps[i] follows tokens[i]. */
-    static void tokenize(String in, List<String> tokens, List<String> seps) {
+    static void tokenize(String in, List<String> tokens, List<String> seps, int mask) {
+        boolean pseudo = (mask & IONG_ONG) != 0;
         int i = 0, n = in.length();
         while (i < n) {
             if (in.charAt(i) == '\'') { i++; continue; }
@@ -100,7 +112,8 @@ public final class FuzzyPinyin {
             for (int len = Math.min(6, n - i); len >= 1 && tok == null; len--) {
                 String t = in.substring(i, i + len);
                 if (t.indexOf('\'') >= 0) continue;
-                if (SYLLABLES.contains(t) || INITIALS.contains(t)) tok = t;
+                if (SYLLABLES.contains(t) || INITIALS.contains(t)
+                        || (pseudo && PSEUDO.contains(t))) tok = t;
             }
             if (tok == null) tok = in.substring(i, i + 1);
             i += tok.length();
@@ -124,8 +137,7 @@ public final class FuzzyPinyin {
         Set<String> out = new LinkedHashSet<>();
         for (String t : heads) {
             out.add(t);
-            String f = finalSwap(t, mask);
-            if (f != null) out.add(f);
+            out.addAll(finalSwaps(t, mask));
         }
         out.remove(tok);
         List<String> res = new ArrayList<>();
@@ -146,31 +158,31 @@ public final class FuzzyPinyin {
             if (t.startsWith("sh")) return "s" + t.substring(2);
             if (t.startsWith("s")) return "sh" + t.substring(1);
         }
-        if ((mask & L_N) != 0) {
-            if (t.startsWith("l")) return "n" + t.substring(1);
-            if (t.startsWith("n")) return "l" + t.substring(1);
-        }
-        if ((mask & F_H) != 0) {
-            if (t.startsWith("f")) return "h" + t.substring(1);
-            if (t.startsWith("h")) return "f" + t.substring(1);
-        }
         return null;
     }
 
-    private static String finalSwap(String t, int mask) {
-        if ((mask & UN_ONG) != 0) {
-            if (t.endsWith("ong")) return t.substring(0, t.length() - 3) + "un";
-            if (t.endsWith("un")) return t.substring(0, t.length() - 2) + "ong";
+    private static List<String> finalSwaps(String t, int mask) {
+        List<String> r = new ArrayList<>(2);
+        if ((mask & XUE_XIE) != 0) {
+            if (t.equals("xue")) r.add("xie");
+            else if (t.equals("xie")) r.add("xue");
         }
         if ((mask & EN_ENG) != 0) {
-            if (t.endsWith("eng")) return t.substring(0, t.length() - 1);
-            if (t.endsWith("en")) return t + "g";
+            if (t.endsWith("eng")) r.add(t.substring(0, t.length() - 1));
+            else if (t.endsWith("en")) r.add(t + "g");
         }
         if ((mask & IN_ING) != 0) {
-            if (t.endsWith("ing")) return t.substring(0, t.length() - 1);
-            if (t.endsWith("in")) return t + "g";
+            if (t.endsWith("ing")) r.add(t.substring(0, t.length() - 1));
+            else if (t.endsWith("in")) r.add(t + "g");
         }
-        return null;
+        if ((mask & UN_ONG) != 0) {
+            if (t.endsWith("ong")) r.add(t.substring(0, t.length() - 3) + "un");
+            else if (t.endsWith("un")) r.add(t.substring(0, t.length() - 2) + "ong");
+        }
+        if ((mask & IONG_ONG) != 0 && PSEUDO.contains(t)) {
+            r.add(t.charAt(0) + "iong"); // xong -> xiong
+        }
+        return r;
     }
 
     /**
@@ -182,7 +194,7 @@ public final class FuzzyPinyin {
         if (mask == 0 || input == null || input.length() < 2) return out;
         List<String> toks = new ArrayList<>();
         List<String> seps = new ArrayList<>();
-        tokenize(input, toks, seps);
+        tokenize(input, toks, seps, mask);
         int n = toks.size();
         if (n == 0 || n > 12) return out;
         List<List<String>> alts = new ArrayList<>();
@@ -274,7 +286,9 @@ public final class FuzzyPinyin {
         java.util.Map<String, List<Pair>> m = PAIR_CACHE.get(mask);
         if (m != null) return m;
         m = new java.util.HashMap<>();
-        for (String syl : SYLLABLES) {
+        List<String> sources = new ArrayList<>(SYLLABLES);
+        if ((mask & IONG_ONG) != 0) sources.addAll(PSEUDO);
+        for (String syl : sources) {
             String img = imageOf(syl);
             for (String alt : alternatives(syl, mask)) {
                 if (!SYLLABLES.contains(alt)) continue;

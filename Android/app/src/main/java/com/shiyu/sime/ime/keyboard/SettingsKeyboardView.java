@@ -120,11 +120,11 @@ public class SettingsKeyboardView extends KeyboardView {
                 fuzzyToggle("z/zh", FuzzyPinyin.Z_ZH),
                 fuzzyToggle("c/ch", FuzzyPinyin.C_CH),
                 fuzzyToggle("s/sh", FuzzyPinyin.S_SH),
-                fuzzyToggle("un/ong", FuzzyPinyin.UN_ONG),
+                fuzzyToggle("xue/xie", FuzzyPinyin.XUE_XIE),
                 fuzzyToggle("en/eng", FuzzyPinyin.EN_ENG),
                 fuzzyToggle("in/ing", FuzzyPinyin.IN_ING),
-                fuzzyToggle("l/n", FuzzyPinyin.L_N),
-                fuzzyToggle("f/h", FuzzyPinyin.F_H));
+                fuzzyToggle("un/ong", FuzzyPinyin.UN_ONG),
+                fuzzyToggle("iong/ong", FuzzyPinyin.IONG_ONG));
         SettingsNode resetRank = SettingsNode.leaf("清除排序", () -> {
             CandidateTuning t = CandidateTuning.shared();
             if (t != null) t.clear();

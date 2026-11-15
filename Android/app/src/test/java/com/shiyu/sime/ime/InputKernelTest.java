@@ -266,6 +266,17 @@ public class InputKernelTest {
     }
 
     @Test
+    public void englishSpaceAndEnterCommitWordWithoutExtraSpace() {
+        kernel.switchMode(KeyboardMode.ENGLISH);
+        for (char c : "hel".toCharArray()) kernel.onKey(SimeKey.letter(c));
+        kernel.onKey(SimeKey.space());
+        for (char c : "hel".toCharArray()) kernel.onKey(SimeKey.letter(c));
+        kernel.onKey(SimeKey.enter());
+
+        assertEquals(Arrays.asList("hel", "hel"), listener.committed);
+    }
+
+    @Test
     public void toggleLangFlushesInFlight() {
         decoder.putSentence("ni", r("你", "ni", 2));
         kernel.onKey(SimeKey.letter('n'));

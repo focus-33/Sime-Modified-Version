@@ -179,13 +179,22 @@ public class T9KeyboardView extends KeyboardView {
         if (enter != null) enter.setLabel(active ? "确定" : "换行");
     }
 
+    /** Scroll the left strip (pinyin letters / symbols) back to its top. */
+    private void resetLeftScroll() {
+        if (leftScroll == null) return;
+        leftScroll.scrollTo(0, 0);
+        leftScroll.post(() -> leftScroll.scrollTo(0, 0));
+    }
+
     private void populateLeftStrip() {
+        populateLeftStripItems();
+        // Whatever the strip now shows starts from its first item, instead
+        // of staying at the spot the user had scrolled down to.
+        resetLeftScroll();
+    }
+
+    private void populateLeftStripItems() {
         leftStrip.removeAllViews();
-        // The left strip is reused for both quick punctuation and the
-        // next syllable's pinyin alternatives. Always restart at its top.
-        if (leftScroll != null) {
-            leftScroll.post(() -> leftScroll.scrollTo(0, 0));
-        }
         if (!active) {
             for (int i = 0; i < IDLE_PUNC.length; i++) {
                 final String p = IDLE_PUNC[i];
@@ -230,7 +239,12 @@ public class T9KeyboardView extends KeyboardView {
     }
 
     private TextView makeLeftItem(String label, Runnable onClick) {
+        // After any pick, return to the top even if the state (and so the
+        // strip contents) does not change, e.g. the idle symbol list.
         return StripHelper.makeStripCell(
-                getContext(), theme, label, onClick, LEFT_ITEM_HEIGHT_DP);
+                getContext(), theme, label, () -> {
+                    onClick.run();
+                    resetLeftScroll();
+                }, LEFT_ITEM_HEIGHT_DP);
     }
 }
