@@ -90,15 +90,16 @@ public final class T9Layout {
                 .verticalPadding(0)
                 .keyMargin(3)
                 .row(KeyRow.builder(1f)
-                        .key(KeyDef.function("123",  SimeKey.toNumber())
-                                .width(0.75f).labelSize(Typography.SMALL))
-                        .key(KeyDef.normal  ("空格", SimeKey.space())
-                                .width(1.5f).labelSize(Typography.SMALL)
-                                .longPress(SimeKey.toggleLang()))
+                        // Comma and number-layout keys exchange positions.
                         // NORMAL appearance intentionally matches the 1–9 digit keys.
                         .key(KeyDef.normal("，", SimeKey.punctuation("，"))
                                 .width(0.75f).labelSize(Typography.BODY)
-                                .longPress(SimeKey.punctuation("。"))))
+                                .longPress(SimeKey.punctuation("。")))
+                        .key(KeyDef.normal  ("空格", SimeKey.space())
+                                .width(1.5f).labelSize(Typography.SMALL)
+                                .longPress(SimeKey.toggleLang()))
+                        .key(KeyDef.function("123",  SimeKey.toNumber())
+                                .width(0.75f).labelSize(Typography.SMALL)))
                 .build();
     }
 

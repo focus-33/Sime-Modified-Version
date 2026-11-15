@@ -613,7 +613,9 @@ public class InputKernel {
     private void handleSpace() {
         if (mode == KeyboardMode.ENGLISH) {
             if (englishBuffer.length() > 0) {
-                commitEnglishBuffer(true);
+                // Space confirms the current English text without appending
+                // an additional trailing space.
+                commitEnglishBuffer();
             } else {
                 fireCommitText(" ");
             }
@@ -637,7 +639,8 @@ public class InputKernel {
     private void handleEnter() {
         if (mode == KeyboardMode.ENGLISH) {
             if (englishBuffer.length() > 0) {
-                commitEnglishBuffer(true);
+                // Confirm the current English text without appending a space.
+                commitEnglishBuffer();
             } else {
                 fireSendEnter();
             }
@@ -1283,19 +1286,11 @@ public class InputKernel {
         publish();
     }
 
-    /**
-     * Commit the English buffer as-is (user pressed space without
-     * picking a completion).
-     */
+    /** Commit the current English preedit without adding trailing whitespace. */
     private void commitEnglishBuffer() {
-        commitEnglishBuffer(false);
-    }
-
-    /** Commit the current English preedit; space is explicit when requested. */
-    private void commitEnglishBuffer(boolean appendSpace) {
         String text = englishBuffer.toString();
         englishBuffer.setLength(0);
-        fireCommitText(appendSpace ? text + " " : text);
+        fireCommitText(text);
         previousCommitEndsWithAsciiWord = endsWithAsciiWord(text);
         fireSetComposingText("");
         candidates = Collections.emptyList();
