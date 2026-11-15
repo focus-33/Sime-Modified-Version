@@ -184,7 +184,7 @@ public class InputKernel {
 
     /** Punctuation shown by the T9 "1 key" picker, in display order. */
     private static final String[] T9_NUM_PUNCTUATION = {
-            "@", "#", "*", "+", "～", "(", ")", "——", "“", "”"
+            "@", "#", "*", "+", "~", "(", ")", "、", "“", "”"
     };
     private List<PinyinAlt> pinyinAlts = Collections.emptyList();
     /** Segmented pinyin string of the current top candidate, for preedit. */
@@ -909,10 +909,11 @@ public class InputKernel {
         DecodeResult c = candidates.get(index);
         state.pushContext(c.tokenIds);
         englishBuffer.setLength(0);
-        // English completion is for English buffer — trad doesn't apply
-        // (English text doesn't get converted), but call through anyway
-        // for consistency.
-        commitPredictionText(tradTextOf(c));
+        // English completion is committed exactly as selected. Do not
+        // inject the automatic inter-word space used by prediction mode.
+        String text = tradTextOf(c);
+        fireCommitText(text);
+        previousCommitEndsWithAsciiWord = false;
         fireSetComposingText("");
         showPredictions(true);
     }

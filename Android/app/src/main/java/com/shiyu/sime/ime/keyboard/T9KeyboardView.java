@@ -181,6 +181,11 @@ public class T9KeyboardView extends KeyboardView {
 
     private void populateLeftStrip() {
         leftStrip.removeAllViews();
+        // The left strip is reused for both quick punctuation and the
+        // next syllable's pinyin alternatives. Always restart at its top.
+        if (leftScroll != null) {
+            leftScroll.post(() -> leftScroll.scrollTo(0, 0));
+        }
         if (!active) {
             for (int i = 0; i < IDLE_PUNC.length; i++) {
                 final String p = IDLE_PUNC[i];

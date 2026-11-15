@@ -166,6 +166,12 @@ public class ExpandedCandidatesView extends LinearLayout {
                 (safeAlts.isEmpty() && safeFallback.isEmpty()) ? GONE : VISIBLE);
         renderLeftStrip(safeAlts, safeFallback);
         renderGrid(candidates, gridStartIndex);
+        // A new syllable / candidate result must start at the first item,
+        // not inherit the previous syllable's scroll position.
+        post(() -> {
+            leftScroll.scrollTo(0, 0);
+            mainScroll.scrollTo(0, 0);
+        });
     }
 
     private void renderLeftStrip(List<InputKernel.PinyinAlt> alts, String fallbackLetters) {

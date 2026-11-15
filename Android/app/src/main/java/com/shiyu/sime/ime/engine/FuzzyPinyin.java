@@ -16,12 +16,12 @@ public final class FuzzyPinyin {
     public static final int Z_ZH = 1;
     public static final int C_CH = 2;
     public static final int S_SH = 4;
-    public static final int AN_ANG = 8;
+    public static final int UN_ONG = 8;
     public static final int EN_ENG = 16;
     public static final int IN_ING = 32;
     public static final int L_N = 64;
     public static final int F_H = 128;
-    public static final int DEFAULT_MASK = Z_ZH | C_CH | S_SH | AN_ANG | EN_ENG | IN_ING;
+    public static final int DEFAULT_MASK = Z_ZH | C_CH | S_SH | UN_ONG | EN_ENG | IN_ING;
     private static final int MAX_VARIANTS = 6;
 
     private static final Set<String> SYLLABLES = new HashSet<>(Arrays.asList((
@@ -158,9 +158,9 @@ public final class FuzzyPinyin {
     }
 
     private static String finalSwap(String t, int mask) {
-        if ((mask & AN_ANG) != 0) {
-            if (t.endsWith("ang")) return t.substring(0, t.length() - 1);
-            if (t.endsWith("an")) return t + "g";
+        if ((mask & UN_ONG) != 0) {
+            if (t.endsWith("ong")) return t.substring(0, t.length() - 3) + "un";
+            if (t.endsWith("un")) return t.substring(0, t.length() - 2) + "ong";
         }
         if ((mask & EN_ENG) != 0) {
             if (t.endsWith("eng")) return t.substring(0, t.length() - 1);
