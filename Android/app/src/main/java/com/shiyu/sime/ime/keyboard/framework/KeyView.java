@@ -221,6 +221,7 @@ public class KeyView extends View {
     private int currentBgColor() {
         switch (def.appearance) {
             case FUNCTION:
+            case FUNCTION_BG_NORMAL_TEXT:
                 if (highlighted) {
                     return pressed ? blend(theme.accentColor, theme.keyBackgroundPressed, 0.5f)
                                   : blend(theme.accentColor, theme.functionKeyBackground, 0.7f);
@@ -244,6 +245,9 @@ public class KeyView extends View {
         switch (def.appearance) {
             case FUNCTION:
                 return theme.keyTextFunction;
+            case FUNCTION_BG_NORMAL_TEXT:
+                if (highlighted) return theme.accentColor;
+                return theme.keyText;
             case ACCENT:
                 return Color.WHITE;
             case NORMAL:

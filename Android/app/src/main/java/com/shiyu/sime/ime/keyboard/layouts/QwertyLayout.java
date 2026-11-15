@@ -2,6 +2,7 @@ package com.shiyu.sime.ime.keyboard.layouts;
 
 import com.shiyu.sime.ime.keyboard.SimeKey;
 import com.shiyu.sime.ime.keyboard.framework.KeyDef;
+import com.shiyu.sime.ime.keyboard.framework.KeyAppearance;
 import com.shiyu.sime.ime.keyboard.framework.KeyRow;
 import com.shiyu.sime.ime.keyboard.framework.KeyboardLayout;
 import com.shiyu.sime.ime.theme.Typography;
@@ -93,10 +94,12 @@ public final class QwertyLayout {
         // remaining side keys; the space bar keeps its original width.
         r4.key(KeyDef.function("123", SimeKey.toNumber()).width(1.875f).labelSize(Typography.SMALL));
         r4.key(KeyDef.normal(",", SimeKey.punctuation(","))
+                .appearance(KeyAppearance.FUNCTION_BG_NORMAL_TEXT)
                 .id(ID_COMMA).width(1.625f).labelSize(Typography.BODY));
         r4.key(KeyDef.normal("空格", SimeKey.space()).width(3f).labelSize(Typography.SMALL)
                 .longPress(SimeKey.toggleLang()));
         r4.key(KeyDef.normal(".", SimeKey.punctuation("."))
+                .appearance(KeyAppearance.FUNCTION_BG_NORMAL_TEXT)
                 .id(ID_PERIOD).width(1.625f).labelSize(Typography.BODY));
         r4.key(KeyDef.function("换行", SimeKey.enter())
                 .id(ID_ENTER).width(1.875f).labelSize(Typography.SMALL));

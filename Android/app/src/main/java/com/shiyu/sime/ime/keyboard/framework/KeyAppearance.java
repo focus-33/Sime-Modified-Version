@@ -13,6 +13,8 @@ public enum KeyAppearance {
     NORMAL,
     /** Control keys (⌫, ⏎, 中/英, 123, …). Darker bg, secondary text color. */
     FUNCTION,
+    /** Function-key background with normal-key label color. */
+    FUNCTION_BG_NORMAL_TEXT,
     /** Emphasised key (selected setting, primary action). Accent bg. */
     ACCENT,
     /** Placeholder slot — invisible, not touchable. Used by settings grid. */
