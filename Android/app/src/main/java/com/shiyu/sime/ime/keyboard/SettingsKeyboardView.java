@@ -52,6 +52,7 @@ public class SettingsKeyboardView extends KeyboardView {
     public static final String PANEL_QUICK_PHRASE = "quick_phrase";
     public static final String PANEL_CLIPBOARD = "clipboard";
     public static final String PANEL_TEXT_EDIT = "textedit";
+    public static final String PANEL_SYMBOL = "symbol";
 
     private OnLayoutChangedListener layoutListener;
     private OnExitListener exitListener;
@@ -139,6 +140,8 @@ public class SettingsKeyboardView extends KeyboardView {
                 () -> openPanel(PANEL_CLIPBOARD), () -> false);
         SettingsNode textEdit = SettingsNode.toggle("文本编辑",
                 () -> openPanel(PANEL_TEXT_EDIT), () -> false);
+        SettingsNode symbols = SettingsNode.toggle("符号",
+                () -> openPanel(PANEL_SYMBOL), () -> false);
         SettingsNode vibration = SettingsNode.toggle("震动",
                 () -> toggleVibration(),
                 () -> prefs.getVibrationEnabled());
@@ -150,7 +153,7 @@ public class SettingsKeyboardView extends KeyboardView {
                 () -> prefs.getPredictionEnabled());
         return SettingsNode.category("设置",
                 keyboardCat, clipboard, quickPhrase, textEdit,
-                vibration, traditional, prediction);
+                vibration, traditional, symbols, prediction);
     }
 
     private void push(SettingsNode node) {
