@@ -42,6 +42,21 @@ jobs:
           done
           (cd SimeApp/Android/app/src/main/assets && sha256sum -c ../../../../../expected-model.sha256)
 
+      - name: Add alternate readings to the dictionary (from rime-ice)
+        run: |
+          # 补充多音词的其他读音（如 便宜 pian'yi）。失败时保留原词典，不影响构建。
+          git clone --depth 1 https://github.com/iDvel/rime-ice.git rime-ice || true
+          if [ -d rime-ice/cn_dicts ]; then
+            if bash SimeApp/tools/patch_dict.sh Sime rime-ice/cn_dicts \
+                 SimeApp/Android/app/src/main/assets/sime.dict /tmp/sime.patched.dict; then
+              cp /tmp/sime.patched.dict SimeApp/Android/app/src/main/assets/sime.dict
+            else
+              echo "::warning::dictionary patch failed, using the original sime.dict"
+            fi
+          else
+            echo "::warning::rime-ice not available, using the original sime.dict"
+          fi
+
       - name: Fetch ncnn source
         run: |
           mkdir -p SimeApp/Android/build
