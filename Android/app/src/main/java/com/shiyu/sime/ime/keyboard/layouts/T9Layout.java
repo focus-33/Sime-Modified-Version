@@ -91,8 +91,10 @@ public final class T9Layout {
                 .verticalPadding(0)
                 .keyMargin(3)
                 .row(KeyRow.builder(1f)
-                        .key(KeyDef.function("，", SimeKey.punctuation("，"))
-                                .width(0.75f).labelSize(Typography.BODY)
+                        // Icon shows both functions: tap = ，  long-press = 。
+                        .key(KeyDef.function("", SimeKey.punctuation("，"))
+                                .icon(com.shiyu.sime.R.drawable.ic_key_comma_period)
+                                .width(0.75f)
                                 .longPress(SimeKey.punctuation("。")))
                         .key(KeyDef.normal  ("空格", SimeKey.space())
                                 .width(1.5f).labelSize(Typography.SMALL)

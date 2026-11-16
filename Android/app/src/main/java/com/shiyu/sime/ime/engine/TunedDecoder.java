@@ -236,10 +236,11 @@ public final class TunedDecoder implements Decoder {
     /**
      * Composed sentences below this average score per syllable are never
      * real phrases (measured: real sentences score -3.4 or better, stitched
-     * nonsense such as 嗯两次模板 scores -6.5). They are removed, not just
+     * nonsense such as 嗯两次模板 scores -6.5; the limit was raised from
+     * -6.0 to -5.5 to also catch borderline cases such as 佛教还目标 at -5.75). They are removed, not just
      * moved back.
      */
-    static final float NONSENSE_PER_SYLLABLE = -6.0f;
+    static final float NONSENSE_PER_SYLLABLE = -5.5f;
     private static final int NONSENSE_MIN_SYLLABLES = 3;
     private static final int NONSENSE_MAX_SYLLABLES = 8;
 

@@ -136,23 +136,25 @@ public class CandidatesBar extends FrameLayout {
         idleView.setGravity(Gravity.CENTER_VERTICAL);
         idleView.setPadding(dp(4), 0, dp(4), 0);
 
-        idleLeftButton = iconImage(com.shiyu.sime.R.drawable.ic_bar_gear);
+        idleLeftButton = iconImage(com.shiyu.sime.R.drawable.ic_toolbar_gear);
         InputFeedbacks.wireClick(idleLeftButton, () -> {
             if (settingsMode) listener.onSettingsBackClick();
             else listener.onSettingsClick();
         });
-        idleView.addView(idleLeftButton);
+        addToIdle(idleLeftButton);
 
         // Shortcuts, in order, right after the settings gear.
         // 简繁转换 occupies the former 表情 shortcut position.
         addTraditionalShortcut();
-        addShortcut("clipboard", com.shiyu.sime.R.drawable.ic_bar_clipboard);
-        addShortcut("textedit", com.shiyu.sime.R.drawable.ic_bar_textedit);
+        addShortcut("clipboard", com.shiyu.sime.R.drawable.ic_toolbar_clipboard);
+        addShortcut("textedit", com.shiyu.sime.R.drawable.ic_toolbar_textedit);
         addLanguageShortcut();
 
-        ImageView hide = iconImage(com.shiyu.sime.R.drawable.ic_bar_hide);
+        ImageView hide = iconImage(com.shiyu.sime.R.drawable.ic_toolbar_hide);
         InputFeedbacks.wireClick(hide, () -> listener.onHideClick());
-        idleView.addView(hide);
+        addToIdle(hide);
+        // Closing spacer so the space left over is shared evenly everywhere.
+        idleView.addView(new View(getContext()), new LinearLayout.LayoutParams(0, 1, 1f));
 
         addView(idleView, new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
@@ -194,10 +196,10 @@ public class CandidatesBar extends FrameLayout {
         candidateScroll.setHorizontalScrollBarEnabled(false);
         LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
-        // Keep a visible gap between the last candidate and the fixed
-        // expand button. The weighted scroll view ends before that button,
-        // so candidate cells can never be drawn underneath it.
-        sLp.rightMargin = dp(8);
+        // No extra gap: the weighted scroll view simply ends where the fixed
+        // expand button starts, so candidates use all the room up to it and
+        // are still never drawn underneath it.
+        sLp.rightMargin = 0;
         candidateScroll.setLayoutParams(sLp);
         candidateContainer = new LinearLayout(getContext());
         candidateContainer.setOrientation(LinearLayout.HORIZONTAL);
@@ -222,33 +224,57 @@ public class CandidatesBar extends FrameLayout {
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
     }
 
+    /** Height of every toolbar glyph, and the touch padding around it. */
+    private static final int BAR_ICON_DP = 28;
+    private static final int BAR_TOUCH_PAD_DP = 11;
+
     /**
-     * Toolbar icon cell. Every cell has equal weight so the six icons
-     * (settings, 简繁, clipboard, text edit, language, hide) spread evenly
-     * across the whole row; the glyph is scaled up to ~30dp.
+     * Toolbar icon. The icon drawables have a tight horizontal viewport, so
+     * the view is exactly as wide as the glyph plus the touch padding. With
+     * equal-weight spacers between all items (see {@link #addToIdle}) the
+     * gap between neighbouring glyphs is the same everywhere, whatever the
+     * glyph widths are.
      */
     private ImageView iconImage(int resId) {
         ImageView iv = new ImageView(getContext());
-        iv.setImageResource(resId);
         iv.setColorFilter(theme.barForeground);
         iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iv.setPadding(dp(10), dp(11), dp(10), dp(11));
         iv.setClickable(true);
         iv.setFocusable(true);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
-        iv.setLayoutParams(lp);
+        setIcon(iv, resId);
         return iv;
+    }
+
+    /** Set the drawable and size the view to the glyph's own width. */
+    private void setIcon(ImageView iv, int resId) {
+        iv.setImageResource(resId);
+        android.graphics.drawable.Drawable d = iv.getDrawable();
+        float aspect = (d != null && d.getIntrinsicHeight() > 0)
+                ? (float) d.getIntrinsicWidth() / d.getIntrinsicHeight() : 1f;
+        int pad = dp(BAR_TOUCH_PAD_DP);
+        int vpad = Math.max(0, (dp(52) - dp(BAR_ICON_DP)) / 2);
+        iv.setPadding(pad, vpad, pad, vpad);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                Math.round(dp(BAR_ICON_DP) * aspect) + 2 * pad,
+                LinearLayout.LayoutParams.MATCH_PARENT);
+        iv.setLayoutParams(lp);
+    }
+
+    /** Add an item to the idle row, preceded by a stretchy spacer. */
+    private void addToIdle(View v) {
+        View spacer = new View(getContext());
+        idleView.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        idleView.addView(v);
     }
 
     private void addShortcut(final String key, int resId) {
         ImageView iv = iconImage(resId);
         InputFeedbacks.wireClick(iv, () -> listener.onShortcutClick(key));
         shortcuts.put(key, iv);
-        idleView.addView(iv);
+        addToIdle(iv);
     }
 
-    /** Text-style toolbar cell (like 中/EN): equal weight, centered. */
+    /** Text-style toolbar cell (like 中/EN), sized to its text. */
     private TextView pairCell(final String key) {
         TextView tv = new TextView(getContext());
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f);
@@ -257,10 +283,13 @@ public class CandidatesBar extends FrameLayout {
         tv.setIncludeFontPadding(false);
         tv.setClickable(true);
         tv.setFocusable(true);
+        int pad = dp(BAR_TOUCH_PAD_DP);
+        tv.setPadding(pad, 0, pad, 0);
         tv.setLayoutParams(new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT));
         InputFeedbacks.wireClick(tv, () -> listener.onShortcutClick(key));
-        idleView.addView(tv);
+        addToIdle(tv);
         return tv;
     }
 
@@ -327,11 +356,11 @@ public class CandidatesBar extends FrameLayout {
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, Typography.TITLE);
         tv.setTextColor(theme.barForeground);
         tv.setGravity(Gravity.CENTER);
-        tv.setPadding(dp(10), 0, dp(10), 0);
+        tv.setPadding(dp(4), 0, dp(4), 0);
         tv.setClickable(true);
         tv.setFocusable(true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                dp(40), LinearLayout.LayoutParams.MATCH_PARENT);
+                dp(32), LinearLayout.LayoutParams.MATCH_PARENT);
         tv.setLayoutParams(lp);
         return tv;
     }
@@ -656,9 +685,9 @@ public class CandidatesBar extends FrameLayout {
         if (this.settingsMode == inSettings) return;
         this.settingsMode = inSettings;
         if (idleLeftButton != null) {
-            idleLeftButton.setImageResource(inSettings
-                    ? com.shiyu.sime.R.drawable.ic_bar_back
-                    : com.shiyu.sime.R.drawable.ic_bar_gear);
+            setIcon(idleLeftButton, inSettings
+                    ? com.shiyu.sime.R.drawable.ic_toolbar_back
+                    : com.shiyu.sime.R.drawable.ic_toolbar_gear);
         }
     }
 

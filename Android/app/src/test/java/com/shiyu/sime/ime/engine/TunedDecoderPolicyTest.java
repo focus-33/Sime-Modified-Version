@@ -84,4 +84,15 @@ public class TunedDecoderPolicyTest {
 
         assertEquals(texts(in), texts(TunedDecoder.dropNonsenseSentences(in)));
     }
+
+    @Test
+    public void borderlineStitchedSentenceBelowMinusFiveAndAHalfIsRemoved() {
+        // 5 syllables at -28.8 is -5.76 per syllable.
+        List<DecodeResult> in = Arrays.asList(
+                new DecodeResult("恩将仇报", "en'jiang'chou'bao", 14, new int[] {1}, -16.3f),
+                new DecodeResult("佛教还目标", "fo'jiao'hai'mu'biao", 14, new int[] {1, 2, 3}, -28.8f));
+
+        assertEquals(Arrays.asList("恩将仇报"),
+                texts(TunedDecoder.dropNonsenseSentences(in)));
+    }
 }

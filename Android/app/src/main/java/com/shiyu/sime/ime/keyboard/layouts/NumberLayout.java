@@ -82,10 +82,10 @@ public final class NumberLayout {
                 .verticalPadding(0)
                 .keyMargin(3)
                 .row(KeyRow.builder(1f)
-                        .key(KeyDef.function("返回", SimeKey.toBack())
-                                .labelSize(Typography.SMALL))
+                        .key(punc("."))
                         .key(digit("0"))
-                        .key(punc(".")))
+                        .key(KeyDef.function("返回", SimeKey.toBack())
+                                .labelSize(Typography.SMALL)))
                 .build();
     }
 
