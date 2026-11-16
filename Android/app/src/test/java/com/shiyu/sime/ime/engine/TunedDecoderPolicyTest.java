@@ -55,4 +55,33 @@ public class TunedDecoderPolicyTest {
 
         assertEquals(texts(in), texts(TunedDecoder.limitLongSentences(in)));
     }
+
+    @Test
+    public void stretchedAbbreviationSentenceIsRemovedWhenBestIsFullSyllables() {
+        List<DecodeResult> in = Arrays.asList(
+                new DecodeResult("明明是", "ming'ming'shi", 11, new int[] {1}, -12f),
+                new DecodeResult("名美国公民是", "ming'm'g'g'mi'shi", 11, new int[] {1, 2, 3}, -28f),
+                new DecodeResult("命名", "ming'ming", 8, new int[] {1}, -25f));
+
+        assertEquals(Arrays.asList("明明是", "命名"),
+                texts(TunedDecoder.dropNonsenseSentences(in)));
+    }
+
+    @Test
+    public void lowScoringComposedSentenceIsRemoved() {
+        List<DecodeResult> in = Arrays.asList(
+                new DecodeResult("嗯两次模板", "en'liang'ci'mu'ban", 14, new int[] {1, 2, 3}, -33f),
+                new DecodeResult("恩", "en", 2, new int[] {1}, -85f));
+
+        assertEquals(Arrays.asList("恩"), texts(TunedDecoder.dropNonsenseSentences(in)));
+    }
+
+    @Test
+    public void initialsTypedOnPurposeAreKept() {
+        List<DecodeResult> in = Arrays.asList(
+                new DecodeResult("你好世界", "n'h'sh'j", 4, new int[] {1, 2}, -15f),
+                new DecodeResult("你会收集", "n'h'sh'j", 4, new int[] {1, 2}, -17f));
+
+        assertEquals(texts(in), texts(TunedDecoder.dropNonsenseSentences(in)));
+    }
 }

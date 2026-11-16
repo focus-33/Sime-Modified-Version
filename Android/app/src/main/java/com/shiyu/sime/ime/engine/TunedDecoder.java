@@ -69,7 +69,7 @@ public final class TunedDecoder implements Decoder {
                 }
             }
         }
-        return finish(limitLongSentences(merge(orig, extras)));
+        return finish(limitLongSentences(dropNonsenseSentences(merge(orig, extras))));
     }
 
     // ===== Nine-key =====
@@ -96,7 +96,8 @@ public final class TunedDecoder implements Decoder {
         if (mask != 0 && digits != null) {
             addDigitVariants(extras, orig, start, digits, mask, limit);
         }
-        return finish(limitLongSentences(demoteWeakSentences(merge(orig, extras))));
+        return finish(limitLongSentences(demoteWeakSentences(
+                dropNonsenseSentences(merge(orig, extras)))));
     }
 
     private void addDigitVariants(List<DecodeResult> extras, DecodeResult[] orig,
@@ -228,6 +229,72 @@ public final class TunedDecoder implements Decoder {
         int syl = r.units.split("'").length;
         if (syl < WEAK_MIN_SYLLABLES || syl > WEAK_MAX_SYLLABLES) return false;
         return r.score / syl < WEAK_SENTENCE_PER_SYLLABLE;
+    }
+
+    // ===== Nonsense whole-input sentences: do not show them at all =====
+
+    /**
+     * Composed sentences below this average score per syllable are never
+     * real phrases (measured: real sentences score -3.4 or better, stitched
+     * nonsense such as 嗯两次模板 scores -6.5). They are removed, not just
+     * moved back.
+     */
+    static final float NONSENSE_PER_SYLLABLE = -6.0f;
+    private static final int NONSENSE_MIN_SYLLABLES = 3;
+    private static final int NONSENSE_MAX_SYLLABLES = 8;
+
+    /**
+     * Removes, among the candidates that cover the whole input:
+     * <ol>
+     *   <li>composed (2+ word) sentences that score far too low;</li>
+     *   <li>"stretched" sentences that contain single-letter abbreviation
+     *       pieces (e.g. ming'm'g'g'mi'shi -> 名美国公民是) when the best
+     *       sentence is made of complete syllables only. When the user is
+     *       really typing initials, the best sentence has such pieces itself
+     *       and nothing is removed.</li>
+     * </ol>
+     * Words and single characters for part of the input are untouched, so
+     * something sensible is always left to pick.
+     */
+    static List<DecodeResult> dropNonsenseSentences(List<DecodeResult> in) {
+        int full = 0;
+        for (DecodeResult r : in) if (isChinese(r)) full = Math.max(full, r.consumed);
+        if (full <= 0) return in;
+        List<DecodeResult> kept = new ArrayList<>(in.size());
+        for (DecodeResult r : in) {
+            if (isChinese(r) && r.consumed == full && isNonsenseSentence(r)) continue;
+            kept.add(r);
+        }
+        if (kept.isEmpty()) return in;
+        DecodeResult top = null;
+        for (DecodeResult r : kept) {
+            if (isChinese(r) && r.consumed == full) { top = r; break; }
+        }
+        if (top != null && !hasAbbreviationPiece(top)) {
+            List<DecodeResult> kept2 = new ArrayList<>(kept.size());
+            for (DecodeResult r : kept) {
+                if (r != top && isChinese(r) && r.consumed == full
+                        && hasAbbreviationPiece(r)) continue;
+                kept2.add(r);
+            }
+            kept = kept2;
+        }
+        return kept;
+    }
+
+    private static boolean isNonsenseSentence(DecodeResult r) {
+        if (r.tokenIds == null || r.tokenIds.length < 2) return false;
+        int syl = r.units.split("'").length;
+        if (syl < NONSENSE_MIN_SYLLABLES || syl > NONSENSE_MAX_SYLLABLES) return false;
+        return r.score / syl < NONSENSE_PER_SYLLABLE;
+    }
+
+    /** True if any pinyin piece is not a complete syllable (an initial only). */
+    private static boolean hasAbbreviationPiece(DecodeResult r) {
+        for (String piece : r.units.split("'")) {
+            if (!piece.isEmpty() && !FuzzyPinyin.isSyllable(piece)) return true;
+        }
+        return false;
     }
 
     // ===== Long phrases / sentences: show fewer, more useful candidates =====
