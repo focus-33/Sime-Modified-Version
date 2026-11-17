@@ -33,7 +33,7 @@ if ! cmp -s "$WORK/same.dict" "$IN"; then
 fi
 
 python3 "$HERE/augment_readings.py" --dump "$WORK/d.letter_pinyin" --rime "$RIME" \
-        --out "$WORK/cn.txt"
+        --out "$WORK/cn.txt" --add "$HERE/add_readings.txt" --remove "$HERE/remove_readings.txt"
 "$SIME_CONVERTER" "$WORK/d.token" "$OUT" --cn "$WORK/cn.txt" \
         --en "$WORK/d.letter_en" >/dev/null 2>&1
 echo "已生成: $OUT ($(stat -c %s "$OUT") 字节)"

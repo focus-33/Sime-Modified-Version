@@ -95,4 +95,40 @@ public class TunedDecoderPolicyTest {
         assertEquals(Arrays.asList("恩将仇报"),
                 texts(TunedDecoder.dropNonsenseSentences(in)));
     }
+
+    @Test
+    public void abbreviationCandidatesAreDropped() {
+        List<DecodeResult> in = Arrays.asList(
+                r("后顾之忧", "h'g'z'y", 4, -20f),
+                r("打麻将", "d'm'jiang", 7, -15f),
+                r("你好", "ni'hao", 5, -8f),
+                r("书", "shu", 3, -9f),
+                r("数", "sh", 2, -10f));      // last piece may be an unfinished syllable
+
+        assertEquals(Arrays.asList("你好", "书", "数"),
+                texts(TunedDecoder.dropAbbreviations(in)));
+    }
+
+    @Test
+    public void bannedReadingIsDropped() {
+        List<DecodeResult> in = Arrays.asList(
+                r("便宜", "bian'yi", 6, -10f),
+                r("便宜", "pian'yi", 6, -10f));
+
+        List<DecodeResult> out = TunedDecoder.dropBannedReadings(in);
+        assertEquals(1, out.size());
+        assertEquals("pian'yi", out.get(0).units);
+    }
+
+    @Test
+    public void wordsThatCutTheKeysDifferentlyAreRemovedForFourSyllableInput() {
+        List<DecodeResult> in = Arrays.asList(
+                r("无妄之灾", "wu'wang'zhi'zai", 12, -14f),
+                r("无妄", "wu'wang", 6, -9f),
+                r("余泱漪", "yu'yang'yi", 8, -12f),   // 8 is not a syllable boundary of the best sentence
+                r("无", "wu", 2, -8f));
+
+        assertEquals(Arrays.asList("无妄之灾", "无妄", "无"),
+                texts(TunedDecoder.restrictToTopSegmentation(in)));
+    }
 }

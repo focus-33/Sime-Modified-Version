@@ -21,7 +21,17 @@ public final class TunedDecoder implements Decoder {
             "", "", "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"};
     /** a / e / o are whole syllables; keep them below real initials. */
     private static final float SYLLABLE_KEY_PENALTY = 4.0f;
-    private static final int NUM_VARIANTS = 10;
+    /** Every variant is a full extra decode; do fewer as the input grows. */
+    private static int digitVariantCap(int digitCount) {
+        if (digitCount <= 12) return 8;
+        if (digitCount <= 20) return 3;
+        return 0;
+    }
+
+    /** Longest input for which first-syllable probing is done. */
+    private static final int PROBE_MIN_DIGITS = 7;
+    private static final int PROBE_MAX_DIGITS = 14;
+    private static final int PROBE_MAX = 2;
     /**
      * Composed (multi-word) sentences below this average score per syllable
      * are almost always nonsense stitched from unrelated words
@@ -60,7 +70,11 @@ public final class TunedDecoder implements Decoder {
         DecodeResult[] orig = base.decodeSentence(pinyin, limit);
         List<DecodeResult> extras = new ArrayList<>();
         if (pinyin != null && pinyin.matches("[a-z']+")) {
-            for (FuzzyPinyin.Variant v : FuzzyPinyin.variants(pinyin, fuzzyMask.getAsInt())) {
+            List<FuzzyPinyin.Variant> vs = FuzzyPinyin.variants(pinyin, fuzzyMask.getAsInt());
+            // Every variant is a full extra decode, so do fewer on long input.
+            int cap = pinyin.length() <= 14 ? 6 : (pinyin.length() <= 24 ? 2 : 0);
+            if (vs.size() > cap) vs = vs.subList(0, cap);
+            for (FuzzyPinyin.Variant v : vs) {
                 for (DecodeResult r : base.decodeSentence(v.input, limit)) {
                     int off = v.mapConsumed(r.consumed);
                     if (off <= 0) continue;
@@ -69,7 +83,9 @@ public final class TunedDecoder implements Decoder {
                 }
             }
         }
-        return finish(limitLongSentences(dropNonsenseSentences(merge(orig, extras))));
+        return finish(limitLongSentences(restrictToTopSegmentation(
+                dropNonsenseSentences(dropAbbreviations(dropBannedReadings(
+                        merge(orig, extras)))))));
     }
 
     // ===== Nine-key =====
@@ -96,8 +112,12 @@ public final class TunedDecoder implements Decoder {
         if (mask != 0 && digits != null) {
             addDigitVariants(extras, orig, start, digits, mask, limit);
         }
-        return finish(limitLongSentences(demoteWeakSentences(
-                dropNonsenseSentences(merge(orig, extras)))));
+        if (start.isEmpty() && digits != null) {
+            addFirstSyllableProbes(extras, orig, digits, limit);
+        }
+        return finish(limitLongSentences(restrictToTopSegmentation(
+                demoteWeakSentences(dropNonsenseSentences(dropAbbreviations(
+                        dropBannedReadings(merge(orig, extras))))))));
     }
 
     private void addDigitVariants(List<DecodeResult> extras, DecodeResult[] orig,
@@ -115,14 +135,43 @@ public final class TunedDecoder implements Decoder {
             }
         }
         for (FuzzyPinyin.DigitVariant v :
-                FuzzyPinyin.digitVariants(digits, mask, bounds, NUM_VARIANTS)) {
+                FuzzyPinyin.digitVariants(digits, mask, bounds, digitVariantCap(digits.length()))) {
             for (DecodeResult r : base.decodeNumSentence(start, v.digits, limit)) {
                 int cd = r.consumed - start.length();
                 int od = v.mapConsumed(cd);
                 if (cd <= 0 || od <= 0) continue;
+                if (!v.acceptsUnits(r.units, start.length(), cd)) continue;
                 String units = r.units == null ? "" : v.fixUnits(r.units, start.length());
                 extras.add(new DecodeResult(r.text, units,
                         od + start.length(), r.tokenIds, r.score));
+            }
+        }
+    }
+
+    /**
+     * The nine-key engine searches ambiguous digits with a limited beam, so
+     * a rarer four-character word can be missed (e.g. 7487449838 finds
+     * 舒适祖父 but not 熟视无睹), yet it is found at once when the first
+     * syllable is fixed, as if the user had tapped it in the syllable list.
+     * Do that automatically for the most likely first syllable(s).
+     */
+    private void addFirstSyllableProbes(List<DecodeResult> extras, DecodeResult[] orig,
+                                        String digits, int limit) {
+        if (digits.length() < PROBE_MIN_DIGITS || digits.length() > PROBE_MAX_DIGITS
+                || digits.indexOf('\'') >= 0) return;
+        List<String> firsts = new ArrayList<>();
+        for (DecodeResult r : orig) {
+            if (firsts.size() >= PROBE_MAX) break;
+            if (!isChinese(r)) continue;
+            String first = r.units.split("'")[0];
+            if (first.length() >= digits.length() || !FuzzyPinyin.isSyllable(first)) continue;
+            if (!firsts.contains(first)) firsts.add(first);
+        }
+        for (String first : firsts) {
+            for (DecodeResult r : base.decodeNumSentence(first,
+                    digits.substring(first.length()), limit)) {
+                if (r.consumed <= 0) continue;
+                extras.add(r);
             }
         }
     }
@@ -175,15 +224,29 @@ public final class TunedDecoder implements Decoder {
         return out.toArray(new DecodeResult[0]);
     }
 
+    private final java.util.LinkedHashMap<String, String> unitsCache =
+            new java.util.LinkedHashMap<String, String>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, String> e) {
+                    return size() > 128;
+                }
+            };
+
     @Override
     public String bestNumUnits(String digits) {
         if (digits == null || digits.isEmpty()) return "";
+        String cached = unitsCache.get(digits);
+        if (cached != null) return cached;
+        String units;
         if (digits.length() == 1 && digits.charAt(0) >= '2' && digits.charAt(0) <= '9') {
             DecodeResult[] lone = loneKey(digits.charAt(0), 0);
-            return lone.length > 0 ? lone[0].units : "";
+            units = lone.length > 0 ? lone[0].units : "";
+        } else {
+            DecodeResult[] r = base.decodeNumSentence("", digits, 0);
+            units = (r.length > 0 && r[0].units != null) ? r[0].units : "";
         }
-        DecodeResult[] r = base.decodeNumSentence("", digits, 0);
-        return (r.length > 0 && r[0].units != null) ? r[0].units : "";
+        unitsCache.put(digits, units);
+        return units;
     }
 
     // ===== Pass-through =====
@@ -368,6 +431,80 @@ public final class TunedDecoder implements Decoder {
     private static boolean isChinese(DecodeResult r) {
         return r.text != null && !r.text.isEmpty() && !isAscii(r.text)
                 && r.units != null && !r.units.isEmpty();
+    }
+
+    // ===== Cleaner candidate lists =====
+
+    /** Readings that must never be offered (text|pinyin). */
+    private static final java.util.Set<String> BANNED_READINGS = new java.util.HashSet<>(
+            java.util.Arrays.asList("便宜|bian'yi"));
+
+    /** Drops banned (word, reading) pairs, e.g. 便宜 read as bian'yi. */
+    static List<DecodeResult> dropBannedReadings(List<DecodeResult> in) {
+        List<DecodeResult> out = null;
+        for (int i = 0; i < in.size(); i++) {
+            DecodeResult r = in.get(i);
+            boolean banned = r.units != null
+                    && BANNED_READINGS.contains(r.text + "|" + r.units.toLowerCase());
+            if (banned && out == null) out = new ArrayList<>(in.subList(0, i));
+            if (!banned && out != null) out.add(r);
+        }
+        return out == null ? in : out;
+    }
+
+    /**
+     * No abbreviations (简拼): a Chinese candidate is kept only when every
+     * pinyin piece except the last is a complete syllable, and the last is a
+     * complete syllable or the beginning of one (the syllable still being
+     * typed). So h'g'z'y -> 后顾之忧 and d'm'jiang -> 打麻将 never appear.
+     */
+    static List<DecodeResult> dropAbbreviations(List<DecodeResult> in) {
+        List<DecodeResult> out = new ArrayList<>(in.size());
+        for (DecodeResult r : in) {
+            if (isChinese(r) && usesAbbreviation(r.units)) continue;
+            out.add(r);
+        }
+        return out;
+    }
+
+    private static boolean usesAbbreviation(String units) {
+        String[] pieces = units.split("'");
+        for (int i = 0; i < pieces.length; i++) {
+            boolean last = (i == pieces.length - 1);
+            if (FuzzyPinyin.isSyllable(pieces[i])) continue;
+            if (last && FuzzyPinyin.isSyllablePrefix(pieces[i])) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * With a clean best sentence of four or more syllables, the words offered
+     * for its first part must follow its syllable boundaries; words that cut
+     * the same keys differently (e.g. 余泱漪 for wu'wang'zhi'zai) are noise.
+     */
+    static List<DecodeResult> restrictToTopSegmentation(List<DecodeResult> in) {
+        int full = 0;
+        for (DecodeResult r : in) if (isChinese(r)) full = Math.max(full, r.consumed);
+        if (full <= 0) return in;
+        DecodeResult top = null;
+        for (DecodeResult r : in) {
+            if (isChinese(r) && r.consumed == full && !isWeakSentence(r, full)) { top = r; break; }
+        }
+        if (top == null) return in;
+        String[] pieces = top.units.split("'");
+        if (pieces.length < 4) return in;
+        for (String p : pieces) if (!FuzzyPinyin.isSyllable(p)) return in;
+        java.util.Set<Integer> boundaries = new java.util.HashSet<>();
+        int sum = 0;
+        for (String p : pieces) { sum += p.length(); boundaries.add(sum); }
+        if (sum != full) return in; // typed separators etc.: leave it alone
+        List<DecodeResult> out = new ArrayList<>(in.size());
+        for (DecodeResult r : in) {
+            if (isChinese(r) && r.consumed < full && !boundaries.contains(r.consumed)) continue;
+            out.add(r);
+        }
+        return out;
     }
 
     // ===== Merge =====

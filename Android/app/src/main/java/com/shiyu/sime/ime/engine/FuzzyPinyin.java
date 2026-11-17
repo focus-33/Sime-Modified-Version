@@ -65,6 +65,21 @@ public final class FuzzyPinyin {
 
     public static boolean isSyllable(String s) { return SYLLABLES.contains(s); }
 
+    private static Set<String> prefixes;
+
+    /** True when {@code s} is a syllable or the beginning of one (e.g. "zh", "sh", "shu"). */
+    public static synchronized boolean isSyllablePrefix(String s) {
+        if (s == null || s.isEmpty()) return false;
+        if (prefixes == null) {
+            Set<String> p = new HashSet<>();
+            for (String syl : SYLLABLES) {
+                for (int i = 1; i <= syl.length(); i++) p.add(syl.substring(0, i));
+            }
+            prefixes = p;
+        }
+        return prefixes.contains(s);
+    }
+
     /** One spelling alternative plus the data to map results back. */
     public static final class Variant {
         public final String input;
@@ -311,6 +326,32 @@ public final class FuzzyPinyin {
         DigitVariant(String digits, int start, int oldLen, int newLen, List<Pair> pairs) {
             this.digits = digits; this.start = start;
             this.oldLen = oldLen; this.newLen = newLen; this.pairs = pairs;
+        }
+
+        /**
+         * A result of the rewritten digit string is only valid when, if it
+         * reaches the rewritten span, it reads exactly that span as the fuzzy
+         * partner syllable itself. Otherwise the engine picked another
+         * syllable for the same keys (e.g. yi for 94 where zi was meant) and
+         * the result no longer matches what was typed.
+         *
+         * @param startLetters number of chosen letters before the digits
+         * @param consumedDigits digits of the variant the result consumed
+         */
+        public boolean acceptsUnits(String units, int startLetters, int consumedDigits) {
+            if (consumedDigits <= start) return true;
+            if (units == null) return false;
+            int pos = 0;
+            for (String tok : units.split("'")) {
+                if (pos == startLetters + start) {
+                    if (tok.length() != newLen) return false;
+                    for (Pair p : pairs) if (p.to.equals(tok)) return true;
+                    return false;
+                }
+                pos += tok.length();
+                if (pos > startLetters + start) return false; // span starts mid-token
+            }
+            return false;
         }
 
         /** Consumed digit count of the variant -> original digit count, or -1. */

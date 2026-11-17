@@ -383,7 +383,11 @@ public class InputKernel {
 
     public void onKey(SimeKey key) {
         if (key == null) return;
-        engineRunner.post(() -> onKeyInternal(key));
+        pendingKeys.incrementAndGet();
+        engineRunner.post(() -> {
+            pendingKeys.decrementAndGet();
+            onKeyInternal(key);
+        });
     }
 
     /** Re-run decoding after the native engine finishes asynchronous startup. */
@@ -399,6 +403,7 @@ public class InputKernel {
     /** Unified candidate pick — routes by mode on the engine thread. */
     public void onCandidatePick(int index) {
         engineRunner.post(() -> {
+            flushStaleDecode();
             if (mode == KeyboardMode.ENGLISH) {
                 onEnglishCompletionPickInternal(index);
             } else {
@@ -411,6 +416,35 @@ public class InputKernel {
     public enum CandidateAction { MOVE_UP, MOVE_DOWN, BLOCK, MOVE_FIRST, MOVE_LAST }
 
     private com.shiyu.sime.ime.engine.CandidateTuning tuning;
+
+    // ===== Coalescing of rapid typing =====
+    /**
+     * Keys posted to the engine thread but not started yet. When more keys
+     * are already queued behind the one being handled, decoding for it is
+     * pointless (its candidates would be replaced a few milliseconds later),
+     * so it is skipped; only the last key of a burst decodes and publishes.
+     */
+    private final java.util.concurrent.atomic.AtomicInteger pendingKeys =
+            new java.util.concurrent.atomic.AtomicInteger();
+    /** Engine thread only: the state changed but its decode was skipped. */
+    private boolean decodeStale = false;
+
+    /** Make sure candidates match the state before anything reads them. */
+    private void flushStaleDecode() {
+        if (!decodeStale) return;
+        decodeStale = false;
+        redecodeAndPublish();
+    }
+
+    private void redecodeAndPublishCoalesced() {
+        if (pendingKeys.get() > 0) {
+            decodeStale = true;
+            return;
+        }
+        decodeStale = false;
+        redecodeAndPublish();
+    }
+
 
     /** Rules store used by the long-press menu (null disables the menu). */
     public void setTuning(com.shiyu.sime.ime.engine.CandidateTuning t) {
@@ -427,6 +461,7 @@ public class InputKernel {
     /** Candidate long-press menu entry point (升序/降序/屏蔽/首位/末尾). */
     public void onCandidateAction(int index, CandidateAction action) {
         engineRunner.post(() -> {
+            flushStaleDecode();
             if (!canTuneCandidates()) return;
             if (index < 0 || index >= candidates.size()) return;
             List<DecodeResult> view = new ArrayList<>(candidates);
@@ -445,6 +480,7 @@ public class InputKernel {
      *  commit the buffer literally as if user pressed space. */
     public void onEnglishLiteralCommit() {
         engineRunner.post(() -> {
+            flushStaleDecode();
             if (mode == KeyboardMode.ENGLISH && englishBuffer.length() > 0) {
                 commitEnglishBuffer();
             }
@@ -452,6 +488,10 @@ public class InputKernel {
     }
 
     private void onKeyInternal(SimeKey key) {
+        if (key.type != KeyType.LETTER && key.type != KeyType.DIGIT
+                && key.type != KeyType.SEPARATOR) {
+            flushStaleDecode();
+        }
         if (inPunctuationPicker
                 && key.type != KeyType.NUM_PUNCTUATION
                 && key.type != KeyType.BACKSPACE) {
@@ -557,7 +597,7 @@ public class InputKernel {
                 + buf.substring(state.lettersEnd);
         state.lettersEnd += 1;
         state.cursor = state.lettersEnd;
-        redecodeAndPublish();
+        redecodeAndPublishCoalesced();
     }
 
     private void handleDigit(char c) {
@@ -568,7 +608,7 @@ public class InputKernel {
         // T9 digit: append to the end of the buffer (after any letters).
         state.buffer = state.buffer + c;
         state.cursor = state.buffer.length();
-        redecodeAndPublish();
+        redecodeAndPublishCoalesced();
     }
 
     private void handleSeparator() {
@@ -605,7 +645,7 @@ public class InputKernel {
             state.lettersEnd += 1;
             state.cursor = state.lettersEnd;
         }
-        redecodeAndPublish();
+        redecodeAndPublishCoalesced();
     }
 
     // ===== Space / Enter =====
@@ -818,6 +858,7 @@ public class InputKernel {
 
     public void onPinyinAltPick(int index) {
         engineRunner.post(() -> {
+            flushStaleDecode();
             if (index < 0 || index >= pinyinAlts.size()) return;
             if (!isChineseLike()) return;
             PinyinAlt alt = pinyinAlts.get(index);
@@ -1130,12 +1171,15 @@ public class InputKernel {
      */
     private String extendUnitsForUncoveredDigits(String units, String digits, int rawLen) {
         String dd = digits.replace("'", "");
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 3; i++) {
             int missing = rawLen - PinyinUtil.countRealChars(units);
             if (missing <= 0 || missing > dd.length()) break;
-            String guess = decoder.bestNumUnits(dd.substring(dd.length() - missing));
+            // Guess the next few syllables only (cheap), then loop for the rest.
+            String tail = dd.substring(dd.length() - missing);
+            if (tail.length() > 10) tail = tail.substring(0, 10);
+            String guess = decoder.bestNumUnits(tail);
             if (guess == null || guess.isEmpty()) break;
-            guess = clipUnitsToLetterCount(guess, missing);
+            guess = clipUnitsToLetterCount(guess, tail.length());
             if (guess.isEmpty()) break;
             units = units + "'" + guess;
         }
