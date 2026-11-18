@@ -102,6 +102,13 @@ public class CandidatesBar extends FrameLayout {
      * it if "@" is still too far from the left border (keep it between 0 and 8).
      */
     private static final int PICKER_SHIFT_LEFT_DP = 4;
+    /**
+     * 1-key symbol list: while it is shown the (empty) pinyin line above it is
+     * still there, which pushes the symbols towards the bottom. Move the
+     * symbols up by this fraction of that empty line's height: 0 = unchanged,
+     * 0.33 = one third (default), 0.5 = halfway, 1 = all the way up.
+     */
+    private static final float PICKER_RAISE_FRACTION = 0.33f;
     /** True while the 1-key symbol list is shown: spread the symbols evenly. */
     private boolean pickerMode = false;
     private boolean languageEnglish = false;
@@ -417,6 +424,7 @@ public class CandidatesBar extends FrameLayout {
             showIdle();
         }
         if (pickerMode) post(this::layoutPickerCells);
+        post(this::applyPickerRaise);
     }
 
     private void showIdle() {
@@ -755,6 +763,16 @@ public class CandidatesBar extends FrameLayout {
         super.onSizeChanged(w, h, oldw, oldh);
         applyExpandAlignment();
         post(this::layoutPickerCells);
+        post(this::applyPickerRaise);
+    }
+
+    /** Lift the symbol list into the empty pinyin line above it (see PICKER_RAISE_FRACTION). */
+    private void applyPickerRaise() {
+        if (candidateScroll == null || preeditView == null) return;
+        float rise = pickerMode ? preeditView.getHeight() * PICKER_RAISE_FRACTION : 0f;
+        if (candidateScroll.getTranslationY() != -rise) {
+            candidateScroll.setTranslationY(-rise);
+        }
     }
 
     private void applyPickerShift() {
