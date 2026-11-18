@@ -95,6 +95,13 @@ public class CandidatesBar extends FrameLayout {
     private TextView traditionalShortcut;
     /** Share of the bar width, measured from the right edge, where the expand button is centred (0 = at the edge). */
     private float expandAlignFraction = 0f;
+    /**
+     * 1-key symbol list: move all symbols this many dp to the left. The gap on
+     * the left shrinks by this amount and the gap on the right grows by it, so
+     * the symbols end up 2x this value closer to the left than before. Raise
+     * it if "@" is still too far from the left border (keep it between 0 and 8).
+     */
+    private static final int PICKER_SHIFT_LEFT_DP = 4;
     /** True while the 1-key symbol list is shown: spread the symbols evenly. */
     private boolean pickerMode = false;
     private boolean languageEnglish = false;
@@ -371,6 +378,7 @@ public class CandidatesBar extends FrameLayout {
 
     public void render(InputKernel.Snapshot snap) {
         this.pickerMode = snap.inPunctuationPicker;
+        applyPickerShift();
         InputState state = snap.state;
         List<DecodeResult> candidates = snap.candidates;
         boolean stateActive = (state != null) && !state.isEmpty();
@@ -747,6 +755,16 @@ public class CandidatesBar extends FrameLayout {
         super.onSizeChanged(w, h, oldw, oldh);
         applyExpandAlignment();
         post(this::layoutPickerCells);
+    }
+
+    private void applyPickerShift() {
+        if (activeView == null) return;
+        int shift = pickerMode ? Math.min(dp(8), dp(PICKER_SHIFT_LEFT_DP)) : 0;
+        int left = dp(8) - shift;
+        int right = dp(8) + shift;
+        if (activeView.getPaddingLeft() != left || activeView.getPaddingRight() != right) {
+            activeView.setPadding(left, 0, right, 0);
+        }
     }
 
     /**
