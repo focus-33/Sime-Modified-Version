@@ -47,7 +47,7 @@ public final class FuzzyPinyin {
             "xian xiang xiao xie xin xing xiong xiu xu xuan xue xun ya yan yang yao ye yi yin ying yo " +
             "yong you yu yuan yue yun za zai zan zang zao ze zei zen zeng zha zhai zhan zhang zhao zhe " +
             "zhei zhen zheng zhi zhong zhou zhu zhua zhuai zhuan zhuang zhui zhun zhuo zi zong zou zu " +
-            "zuan zui zun zuo "
+            "zuan zui zun zuo chua dia fiao lo lve nun nve rua tei "
             ).trim().split(" ")));
     private static final Set<String> INITIALS = new HashSet<>(Arrays.asList(
             "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "j", "q", "x",
@@ -56,7 +56,7 @@ public final class FuzzyPinyin {
     /**
      * Spellings people type for j/q/x + iong when they drop the i. They are
      * not real syllables, so they are only recognised when the iong/ong
-     * rule is on, and they only ever map to the real syllable.
+     * or un/ong rule is on, and they only ever map to the real syllable.
      */
     private static final Set<String> PSEUDO = new HashSet<>(Arrays.asList(
             "jong", "qong", "xong"));
@@ -64,6 +64,9 @@ public final class FuzzyPinyin {
     private FuzzyPinyin() {}
 
     public static boolean isSyllable(String s) { return SYLLABLES.contains(s); }
+
+    /** jong / qong / xong: spellings only accepted through the fuzzy rules. */
+    public static boolean isPseudo(String s) { return PSEUDO.contains(s); }
 
     private static Set<String> prefixes;
 
@@ -119,7 +122,7 @@ public final class FuzzyPinyin {
 
     /** Split pinyin into syllable-like tokens; seps[i] follows tokens[i]. */
     static void tokenize(String in, List<String> tokens, List<String> seps, int mask) {
-        boolean pseudo = (mask & IONG_ONG) != 0;
+        boolean pseudo = (mask & (IONG_ONG | UN_ONG)) != 0;
         int i = 0, n = in.length();
         while (i < n) {
             if (in.charAt(i) == '\'') { i++; continue; }
@@ -302,7 +305,7 @@ public final class FuzzyPinyin {
         if (m != null) return m;
         m = new java.util.HashMap<>();
         List<String> sources = new ArrayList<>(SYLLABLES);
-        if ((mask & IONG_ONG) != 0) sources.addAll(PSEUDO);
+        if ((mask & (IONG_ONG | UN_ONG)) != 0) sources.addAll(PSEUDO);
         for (String syl : sources) {
             String img = imageOf(syl);
             for (String alt : alternatives(syl, mask)) {

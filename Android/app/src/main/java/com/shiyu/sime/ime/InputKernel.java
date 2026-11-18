@@ -184,7 +184,7 @@ public class InputKernel {
 
     /** Punctuation shown by the T9 "1 key" picker, in display order. */
     private static final String[] T9_NUM_PUNCTUATION = {
-            "@", "#", "*", "+", "～", "(", ")", "——", "“", "”"
+            "@", "#", "*", "～", "(", ")", "——", "“", "”", "……"
     };
     private List<PinyinAlt> pinyinAlts = Collections.emptyList();
     /** Segmented pinyin string of the current top candidate, for preedit. */

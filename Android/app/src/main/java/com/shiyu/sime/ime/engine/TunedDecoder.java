@@ -62,12 +62,12 @@ public final class TunedDecoder implements Decoder {
         try {
             return decodeSentenceTuned(pinyin, limit);
         } catch (RuntimeException e) {
-            return base.decodeSentence(pinyin, limit); // never lose candidates
+            return engSentence(pinyin, limit); // never lose candidates
         }
     }
 
     private DecodeResult[] decodeSentenceTuned(String pinyin, int limit) {
-        DecodeResult[] orig = base.decodeSentence(pinyin, limit);
+        DecodeResult[] orig = engSentence(pinyin, limit);
         List<DecodeResult> extras = new ArrayList<>();
         if (pinyin != null && pinyin.matches("[a-z']+")) {
             List<FuzzyPinyin.Variant> vs = FuzzyPinyin.variants(pinyin, fuzzyMask.getAsInt());
@@ -75,7 +75,7 @@ public final class TunedDecoder implements Decoder {
             int cap = pinyin.length() <= 14 ? 6 : (pinyin.length() <= 24 ? 2 : 0);
             if (vs.size() > cap) vs = vs.subList(0, cap);
             for (FuzzyPinyin.Variant v : vs) {
-                for (DecodeResult r : base.decodeSentence(v.input, limit)) {
+                for (DecodeResult r : engSentence(v.input, limit)) {
                     int off = v.mapConsumed(r.consumed);
                     if (off <= 0) continue;
                     extras.add(new DecodeResult(r.text, v.originalUnits(off),
@@ -95,7 +95,7 @@ public final class TunedDecoder implements Decoder {
         try {
             return decodeNumTuned(startLetters, digits, limit);
         } catch (RuntimeException e) {
-            return base.decodeNumSentence(startLetters, digits, limit);
+            return engNum(startLetters, digits, limit);
         }
     }
 
@@ -106,7 +106,7 @@ public final class TunedDecoder implements Decoder {
             DecodeResult[] lone = loneKey(digits.charAt(0), limit);
             if (lone.length > 0) return finish(Arrays.asList(lone));
         }
-        DecodeResult[] orig = base.decodeNumSentence(start, digits, limit);
+        DecodeResult[] orig = engNum(start, digits, limit);
         List<DecodeResult> extras = new ArrayList<>();
         int mask = fuzzyMask.getAsInt();
         if (mask != 0 && digits != null) {
@@ -136,7 +136,7 @@ public final class TunedDecoder implements Decoder {
         }
         for (FuzzyPinyin.DigitVariant v :
                 FuzzyPinyin.digitVariants(digits, mask, bounds, digitVariantCap(digits.length()))) {
-            for (DecodeResult r : base.decodeNumSentence(start, v.digits, limit)) {
+            for (DecodeResult r : engNum(start, v.digits, limit)) {
                 int cd = r.consumed - start.length();
                 int od = v.mapConsumed(cd);
                 if (cd <= 0 || od <= 0) continue;
@@ -168,7 +168,7 @@ public final class TunedDecoder implements Decoder {
             if (!firsts.contains(first)) firsts.add(first);
         }
         for (String first : firsts) {
-            for (DecodeResult r : base.decodeNumSentence(first,
+            for (DecodeResult r : engNum(first,
                     digits.substring(first.length()), limit)) {
                 if (r.consumed <= 0) continue;
                 extras.add(r);
@@ -185,7 +185,7 @@ public final class TunedDecoder implements Decoder {
             if (ch == 'i' || ch == 'u' || ch == 'v') continue;
             float penalty = (ch == 'a' || ch == 'e' || ch == 'o')
                     ? SYLLABLE_KEY_PENALTY : 0f;
-            for (DecodeResult r : base.decodeSentence(String.valueOf(ch), limit)) {
+            for (DecodeResult r : engSentence(String.valueOf(ch), limit)) {
                 if (r.text == null || r.text.isEmpty() || isAscii(r.text)) continue;
                 float score = r.score - penalty;
                 DecodeResult old = best.get(r.text);
@@ -242,7 +242,7 @@ public final class TunedDecoder implements Decoder {
             DecodeResult[] lone = loneKey(digits.charAt(0), 0);
             units = lone.length > 0 ? lone[0].units : "";
         } else {
-            DecodeResult[] r = base.decodeNumSentence("", digits, 0);
+            DecodeResult[] r = engNum("", digits, 0);
             units = (r.length > 0 && r[0].units != null) ? r[0].units : "";
         }
         unitsCache.put(digits, units);
@@ -253,7 +253,7 @@ public final class TunedDecoder implements Decoder {
 
     @Override
     public String[] t9PinyinSyllables(String digits, int limit) {
-        return base.t9PinyinSyllables(digits, limit);
+        return aliasSyllablesOut(base.t9PinyinSyllables(digits, limit));
     }
 
     @Override public int contextSize() { return base.contextSize(); }
@@ -356,7 +356,8 @@ public final class TunedDecoder implements Decoder {
     /** True if any pinyin piece is not a complete syllable (an initial only). */
     private static boolean hasAbbreviationPiece(DecodeResult r) {
         for (String piece : r.units.split("'")) {
-            if (!piece.isEmpty() && !FuzzyPinyin.isSyllable(piece)) return true;
+            if (!piece.isEmpty() && !FuzzyPinyin.isSyllable(piece)
+                    && !FuzzyPinyin.isPseudo(piece)) return true;
         }
         return false;
     }
@@ -433,6 +434,77 @@ public final class TunedDecoder implements Decoder {
                 && r.units != null && !r.units.isEmpty();
     }
 
+    // ===== ü spellings =====
+    // The dictionary spells the ü syllables with v (lve, nve), the standard
+    // spelling is lue / nue. Typed lue / nue is therefore handed to the engine
+    // as lve / nve (and shown back as lue / nue); without this the engine
+    // can only split "lue" into lu'e (so 掠过 / 略过 never appear).
+
+    private static boolean isPinyinLike(List<String> tokens) {
+        for (int i = 0; i < tokens.size(); i++) {
+            String t = tokens.get(i);
+            boolean last = (i == tokens.size() - 1);
+            if (FuzzyPinyin.isSyllable(t)) continue;
+            if (last && FuzzyPinyin.isSyllablePrefix(t)) continue;
+            return false;
+        }
+        return !tokens.isEmpty();
+    }
+
+    /** Typed lue / nue -> dictionary lve / nve, only when the text is real pinyin. */
+    static String aliasIn(String typed) {
+        if (typed == null || (typed.indexOf("lue") < 0 && typed.indexOf("nue") < 0)) return typed;
+        List<String> tokens = new ArrayList<>();
+        List<String> seps = new ArrayList<>();
+        FuzzyPinyin.tokenize(typed, tokens, seps, 0);
+        if (!isPinyinLike(tokens)) return typed;      // e.g. the English word "blue"
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < tokens.size(); i++) {
+            String t = tokens.get(i);
+            sb.append(t.equals("lue") ? "lve" : t.equals("nue") ? "nve" : t).append(seps.get(i));
+        }
+        return sb.toString();
+    }
+
+    /** Dictionary lve / nve -> standard lue / nue for display and further input. */
+    static String unitsOut(String units) {
+        if (units == null || (units.indexOf("lve") < 0 && units.indexOf("nve") < 0)) return units;
+        String[] pieces = units.split("'", -1);
+        for (int i = 0; i < pieces.length; i++) {
+            if (pieces[i].equals("lve")) pieces[i] = "lue";
+            else if (pieces[i].equals("nve")) pieces[i] = "nue";
+        }
+        return String.join("'", pieces);
+    }
+
+    private static DecodeResult[] aliasResultsOut(DecodeResult[] in) {
+        DecodeResult[] out = null;
+        for (int i = 0; i < in.length; i++) {
+            String u = unitsOut(in[i].units);
+            if (u != in[i].units) {
+                if (out == null) out = in.clone();
+                DecodeResult r = in[i];
+                out[i] = new DecodeResult(r.text, u, r.consumed, r.tokenIds, r.score);
+            }
+        }
+        return out == null ? in : out;
+    }
+
+    private static String[] aliasSyllablesOut(String[] in) {
+        if (in == null) return null;
+        java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+        for (String s : in) seen.add(s.equals("lve") ? "lue" : s.equals("nve") ? "nue" : s);
+        return seen.toArray(new String[0]);
+    }
+
+    private DecodeResult[] engSentence(String pinyin, int limit) {
+        return aliasResultsOut(base.decodeSentence(aliasIn(pinyin), limit));
+    }
+
+    private DecodeResult[] engNum(String start, String digits, int limit) {
+        return aliasResultsOut(base.decodeNumSentence(aliasIn(start), digits, limit));
+    }
+
     // ===== Cleaner candidate lists =====
 
     /** Readings that must never be offered (text|pinyin). */
@@ -471,7 +543,7 @@ public final class TunedDecoder implements Decoder {
         String[] pieces = units.split("'");
         for (int i = 0; i < pieces.length; i++) {
             boolean last = (i == pieces.length - 1);
-            if (FuzzyPinyin.isSyllable(pieces[i])) continue;
+            if (FuzzyPinyin.isSyllable(pieces[i]) || FuzzyPinyin.isPseudo(pieces[i])) continue;
             if (last && FuzzyPinyin.isSyllablePrefix(pieces[i])) continue;
             return true;
         }
@@ -494,7 +566,9 @@ public final class TunedDecoder implements Decoder {
         if (top == null) return in;
         String[] pieces = top.units.split("'");
         if (pieces.length < 4) return in;
-        for (String p : pieces) if (!FuzzyPinyin.isSyllable(p)) return in;
+        for (String p : pieces) {
+            if (!FuzzyPinyin.isSyllable(p) && !FuzzyPinyin.isPseudo(p)) return in;
+        }
         java.util.Set<Integer> boundaries = new java.util.HashSet<>();
         int sum = 0;
         for (String p : pieces) { sum += p.length(); boundaries.add(sum); }

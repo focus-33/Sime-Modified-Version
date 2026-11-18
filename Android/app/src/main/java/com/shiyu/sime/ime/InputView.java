@@ -308,6 +308,10 @@ public class InputView extends LinearLayout implements InputKernel.StateObserver
         KeyboardView next = buildKeyboard(mode, layout);
         if (next == null) return;
         next.setOnKeyListener(kernel::onKey);
+        // On the nine-key the expand (more) button sits over the centre of the
+        // delete key: the right column is 0.9 of 5.0 width units, so its
+        // centre is 9% of the width from the right edge.
+        candidatesBar.setExpandAlignFraction(next instanceof T9KeyboardView ? 0.09f : 0f);
         if (next instanceof T9KeyboardView) {
             ((T9KeyboardView) next).setOnLeftStripListener(
                     new T9KeyboardView.OnLeftStripListener() {

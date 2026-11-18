@@ -93,6 +93,10 @@ public class CandidatesBar extends FrameLayout {
     private final java.util.Map<String, View> shortcuts = new java.util.HashMap<>();
     private TextView languageShortcut;
     private TextView traditionalShortcut;
+    /** Share of the bar width, measured from the right edge, where the expand button is centred (0 = at the edge). */
+    private float expandAlignFraction = 0f;
+    /** True while the 1-key symbol list is shown: spread the symbols evenly. */
+    private boolean pickerMode = false;
     private boolean languageEnglish = false;
     private String activeShortcut = null;
     private boolean traditionalOn = false;
@@ -366,6 +370,7 @@ public class CandidatesBar extends FrameLayout {
     }
 
     public void render(InputKernel.Snapshot snap) {
+        this.pickerMode = snap.inPunctuationPicker;
         InputState state = snap.state;
         List<DecodeResult> candidates = snap.candidates;
         boolean stateActive = (state != null) && !state.isEmpty();
@@ -565,6 +570,24 @@ public class CandidatesBar extends FrameLayout {
                 ? 0 : Math.min(candidates.size(), MAX_STRIP_CANDIDATES);
         int totalCells = candCount + (hasBufferCell ? 1 : 0);
         this.activeCandidateCount = totalCells;
+        // Symbol list (1 key): spread the symbols over the whole row so the
+        // gaps to the left and right borders are equal.
+        candidateScroll.setFillViewport(pickerMode);
+        android.view.ViewGroup.LayoutParams cLp = candidateContainer.getLayoutParams();
+        if (cLp != null) {
+            cLp.width = pickerMode ? LinearLayout.LayoutParams.MATCH_PARENT
+                    : LinearLayout.LayoutParams.WRAP_CONTENT;
+            candidateContainer.setLayoutParams(cLp);
+        }
+        for (int i = 0; i < candidateContainer.getChildCount(); i++) {
+            View child = candidateContainer.getChildAt(i);
+            android.view.ViewGroup.LayoutParams cl = child.getLayoutParams();
+            if (cl instanceof LinearLayout.LayoutParams) {
+                LinearLayout.LayoutParams ll = (LinearLayout.LayoutParams) cl;
+                float w = (pickerMode && child instanceof TextView) ? 1f : 0f;
+                if (ll.weight != w) { ll.weight = w; child.setLayoutParams(ll); }
+            }
+        }
         // A new candidate list (e.g. the next syllable after picking a word)
         // always starts from its first candidate, not the old scroll spot.
         resetCandidateScroll();
@@ -689,6 +712,36 @@ public class CandidatesBar extends FrameLayout {
                     ? com.shiyu.sime.R.drawable.ic_toolbar_back
                     : com.shiyu.sime.R.drawable.ic_toolbar_gear);
         }
+    }
+
+    /**
+     * Centre the expand (more) button over a keyboard column: its centre is
+     * {@code fraction} of the bar width away from the right edge. The nine-key
+     * keyboard passes the centre of its delete key; 0 keeps it at the edge.
+     */
+    public void setExpandAlignFraction(float fraction) {
+        this.expandAlignFraction = fraction;
+        applyExpandAlignment();
+    }
+
+    private void applyExpandAlignment() {
+        if (expandToggleButton == null || getWidth() <= 0) return;
+        android.view.ViewGroup.LayoutParams raw = expandToggleButton.getLayoutParams();
+        if (!(raw instanceof LinearLayout.LayoutParams)) return;
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) raw;
+        int half = dp(16); // half of the button's 32dp width
+        int margin = expandAlignFraction > 0f
+                ? Math.max(0, Math.round(getWidth() * expandAlignFraction) - half) : 0;
+        if (lp.rightMargin != margin) {
+            lp.rightMargin = margin;
+            expandToggleButton.setLayoutParams(lp);
+        }
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        applyExpandAlignment();
     }
 
     /** Scroll the candidate strip back to its first candidate. */

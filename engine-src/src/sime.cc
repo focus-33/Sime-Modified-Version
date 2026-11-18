@@ -1,3 +1,6 @@
+#include <string>
+#include <string_view>
+#include <vector>
 #include "sime.h"
 
 #include "cut.h"
@@ -21,6 +24,58 @@ namespace {
 constexpr std::size_t kGruCandidates = 10;
 constexpr float_t kGruPinyinScale = 0.60;
 constexpr float_t kGruT9Scale = 0.72;
+
+// ---- Strict readings for expansion (completion) edges ----
+// An expansion edge may only finish the syllable that is still being typed
+// at the very end of the input. A word's real pieces (e.g. "ming'xian")
+// must equal what was typed for every piece but the last ("mi'xi" does not
+// match: "mi" is not "ming"), and the last piece may be an unfinished
+// prefix of the word's piece.
+std::vector<std::string_view> SplitPieces(const char* pieces) {
+    std::vector<std::string_view> out;
+    std::string_view sv(pieces != nullptr ? pieces : "");
+    std::size_t begin = 0;
+    for (std::size_t i = 0; i <= sv.size(); ++i) {
+        if (i == sv.size() || sv[i] == '\'' || sv[i] == '/') {
+            if (i > begin) out.push_back(sv.substr(begin, i - begin));
+            begin = i + 1;
+        }
+    }
+    return out;
+}
+
+std::string LettersToKeys(std::string_view letters) {
+    static const char kKeys[] = "22233344455566677778889999";
+    std::string out;
+    out.reserve(letters.size());
+    for (char c : letters) {
+        out.push_back(c >= 'a' && c <= 'z' ? kKeys[c - 'a'] : c);
+    }
+    return out;
+}
+
+// typed: letters (or nine-key digits when as_keys) without apostrophes.
+bool TailOnlyPrefix(const char* pieces, std::string_view typed, bool as_keys) {
+    auto ps = SplitPieces(pieces);
+    if (ps.empty()) return false;
+    auto form = [&](std::string_view p) {
+        return as_keys ? LettersToKeys(p) : std::string(p);
+    };
+    std::string head;
+    for (std::size_t i = 0; i + 1 < ps.size(); ++i) head += form(ps[i]);
+    const std::string last = form(ps.back());
+    if (typed.size() <= head.size()) return false;
+    if (typed.substr(0, head.size()) != head) return false;
+    std::string_view rest = typed.substr(head.size());
+    return last.size() >= rest.size() && last.compare(0, rest.size(), rest) == 0;
+}
+
+std::string StripApostrophes(std::string_view s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) if (c != '\'') out.push_back(c);
+    return out;
+}
 
 void RerankWithGru(std::vector<DecodeResult>& candidates,
                    const GruReranker* reranker,
@@ -259,6 +314,10 @@ void Sime::InitNumNet(std::string_view start,
             if (!pinyin && r.length <= tail.size()) continue;
             auto entry = dict_.GetEntry(type, r.value);
             for (uint32_t i = 0; i < entry.count; ++i) {
+                if (pinyin && !TailOnlyPrefix(entry.items[i].pieces,
+                                              StripApostrophes(tail), false)) {
+                    continue;
+                }
                 net[s].es.push_back({s, target_col, entry.items[i].id,
                                      entry.items[i].pieces, 0, true, en});
             }
@@ -414,10 +473,13 @@ void Sime::InitNumNet(std::string_view start,
                 if (!letter_is_syllable[bi - 1]) saw_incomplete = true;
                 if (!saw_incomplete) continue;
                 std::size_t target = letter_bounds[bi];
+                // Completion is only for the syllable being typed, i.e. at
+                // the very end of the whole input.
+                if (target != total) continue;
                 auto prefix = start.substr(s, target - s);
                 expand_dat(s, Dict::LetterPinyin, prefix, target, 512, true, false);
             }
-            if (saw_incomplete) {
+            if (saw_incomplete && p == total) {
                 std::string_view suffix = start.substr(s);
                 expand_dat(s, Dict::LetterEn, suffix, p, 1024, false, true);
             }
@@ -461,12 +523,20 @@ void Sime::InitNumNet(std::string_view start,
                 if (!saw_incomplete) continue;
 
                 std::size_t k = target_dpos - s_dpos;
+                // Completion is only for the syllable being typed, i.e. at
+                // the very end of the whole input.
+                if (p + target_dpos != total) continue;
+                const std::string typed_keys =
+                    StripApostrophes(nums.substr(s_dpos, k));
                 auto emit_cn = [&](const std::vector<trie::DoubleArray::PinyinState>& sts) {
                     auto comps = dict_.Dat(Dict::LetterPinyin)
                         .CollectCompletionsPinyin(sts, k, 1024, /*stop_at_sep=*/true);
                     for (const auto& r : comps) {
                         auto entry = dict_.GetEntry(Dict::LetterPinyin, r.value);
                         for (uint32_t i = 0; i < entry.count; ++i) {
+                            if (!TailOnlyPrefix(entry.items[i].pieces, typed_keys, true)) {
+                                continue;
+                            }
                             net[s].es.push_back({s, s + k, entry.items[i].id,
                                                  entry.items[i].pieces, 0, true,
                                                  false});
@@ -980,6 +1050,9 @@ void Sime::InitNet(std::string_view input,
                 if (!seg_is_syllable[bi - 1]) saw_incomplete = true;
                 if (!saw_incomplete) continue;
                 std::size_t target = seg_bounds[bi];
+                // Completion is only for the syllable being typed, i.e. at
+                // the very end of the input.
+                if (target != total) continue;
                 auto raw_prefix = input.substr(s, target - s);
                 std::string prefix;
                 prefix.reserve(raw_prefix.size());
@@ -991,6 +1064,9 @@ void Sime::InitNet(std::string_view input,
                 for (const auto& r : results) {
                     auto entry = dict_.GetEntry(Dict::LetterPinyin, r.value);
                     for (uint32_t i = 0; i < entry.count; ++i) {
+                        if (!TailOnlyPrefix(entry.items[i].pieces, prefix, false)) {
+                            continue;
+                        }
                         net[s].es.push_back({s, target, entry.items[i].id,
                                              entry.items[i].pieces, 0, true,
                                              false});

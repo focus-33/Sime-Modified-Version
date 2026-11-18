@@ -131,4 +131,28 @@ public class TunedDecoderPolicyTest {
         assertEquals(Arrays.asList("无妄之灾", "无妄", "无"),
                 texts(TunedDecoder.restrictToTopSegmentation(in)));
     }
+
+    @Test
+    public void typedLueIsHandedToTheDictionaryAsLve() {
+        assertEquals("lve'guo", TunedDecoder.aliasIn("lue'guo"));
+        assertEquals("nvehai", TunedDecoder.aliasIn("nuehai"));
+        // not pinyin: leave English words alone
+        assertEquals("blue", TunedDecoder.aliasIn("blue"));
+        assertEquals("value", TunedDecoder.aliasIn("value"));
+    }
+
+    @Test
+    public void dictionarySpellingIsShownAsLue() {
+        assertEquals("lue'guo", TunedDecoder.unitsOut("lve'guo"));
+        assertEquals("nue", TunedDecoder.unitsOut("nve"));
+    }
+
+    @Test
+    public void fuzzySpellingsAreNotTreatedAsAbbreviations() {
+        List<DecodeResult> in = Arrays.asList(
+                r("利欲熏心", "li'yu'xong'xin", 11, -14f));   // xong typed for xun
+
+        assertEquals(Arrays.asList("利欲熏心"),
+                texts(TunedDecoder.dropAbbreviations(in)));
+    }
 }
