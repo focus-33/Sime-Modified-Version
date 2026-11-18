@@ -408,6 +408,7 @@ public class CandidatesBar extends FrameLayout {
         } else {
             showIdle();
         }
+        if (pickerMode) post(this::layoutPickerCells);
     }
 
     private void showIdle() {
@@ -730,8 +731,11 @@ public class CandidatesBar extends FrameLayout {
         if (!(raw instanceof LinearLayout.LayoutParams)) return;
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) raw;
         int half = dp(16); // half of the button's 32dp width
+        // The button sits inside activeView, which has its own right padding;
+        // its centre must be (fraction x bar width) from the bar's right edge.
+        int inset = activeView != null ? activeView.getPaddingRight() : 0;
         int margin = expandAlignFraction > 0f
-                ? Math.max(0, Math.round(getWidth() * expandAlignFraction) - half) : 0;
+                ? Math.max(0, Math.round(getWidth() * expandAlignFraction) - half - inset) : 0;
         if (lp.rightMargin != margin) {
             lp.rightMargin = margin;
             expandToggleButton.setLayoutParams(lp);
@@ -742,6 +746,45 @@ public class CandidatesBar extends FrameLayout {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         applyExpandAlignment();
+        post(this::layoutPickerCells);
+    }
+
+    /**
+     * Symbol list (1 key): the symbols have 12dp of padding on each side by
+     * default, which makes ten of them wider than the screen, so the list
+     * starts far from the left edge but its last symbol ends up against the
+     * right edge. Shrink the side padding just enough for all symbols to fit,
+     * then the weights spread what is left evenly: the first and the last
+     * symbol end up the same distance from their borders.
+     */
+    private void layoutPickerCells() {
+        if (!pickerMode || candidateContainer == null) return;
+        int avail = getWidth() - dp(16); // activeView has 8dp on each side
+        if (avail <= 0) return;
+        List<TextView> cells = new java.util.ArrayList<>();
+        int dividers = 0;
+        float textSum = 0f;
+        for (int i = 0; i < candidateContainer.getChildCount(); i++) {
+            View child = candidateContainer.getChildAt(i);
+            if (child.getVisibility() == GONE) continue;
+            if (child instanceof TextView) {
+                TextView tv = (TextView) child;
+                cells.add(tv);
+                textSum += tv.getPaint().measureText(tv.getText().toString());
+            } else {
+                dividers += Math.max(1, child.getLayoutParams() != null
+                        && child.getLayoutParams().width > 0
+                        ? child.getLayoutParams().width : dp(1));
+            }
+        }
+        if (cells.isEmpty()) return;
+        float pad = (avail - textSum - dividers) / (2f * cells.size());
+        int p = Math.round(Math.max(dp(2), Math.min(dp(12), pad)));
+        for (TextView tv : cells) {
+            if (tv.getPaddingLeft() != p || tv.getPaddingRight() != p) {
+                tv.setPadding(p, tv.getPaddingTop(), p, tv.getPaddingBottom());
+            }
+        }
     }
 
     /** Scroll the candidate strip back to its first candidate. */
