@@ -119,7 +119,7 @@ public class SettingsKeyboardView extends KeyboardView {
         SettingsNode fuzzyCat = SettingsNode.category("模糊音",
                 fuzzyToggle("z/zh", FuzzyPinyin.Z_ZH),
                 fuzzyToggle("c/ch", FuzzyPinyin.C_CH),
-                fuzzyToggle("s/sh", FuzzyPinyin.S_SH),
+                fuzzyToggle("un/iong", FuzzyPinyin.UN_IONG),
                 fuzzyToggle("xue/xie", FuzzyPinyin.XUE_XIE),
                 fuzzyToggle("en/eng", FuzzyPinyin.EN_ENG),
                 fuzzyToggle("in/ing", FuzzyPinyin.IN_ING),

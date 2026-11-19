@@ -109,22 +109,34 @@ public class ExpandedCandidatesView extends LinearLayout {
 
         // ===== Right control column: 返回 / 上 / 下 / ⌫ =====
         // Vertical strip of 4 function buttons (each 1/4 of column
-        // height). 返回 collapses the panel; 上/下 page-scroll the
-        // grid; ⌫ deletes one char from the buffer.
+        // height). 返回 collapses the panel; 上/下 turn one whole
+        // page of the grid; ⌫ deletes one char from the buffer.
         LinearLayout rightCol = new LinearLayout(ctx);
         rightCol.setOrientation(VERTICAL);
         addView(rightCol, new LayoutParams(0, LayoutParams.MATCH_PARENT, 1f));
 
         rightCol.addView(makeControlButton("返回", () -> listener.onCollapse()));
-        rightCol.addView(makeControlButton("∧", () -> {
-            int dy = -mainScroll.getHeight() / 2;
-            if (dy != 0) mainScroll.smoothScrollBy(0, dy);
-        }));
-        rightCol.addView(makeControlButton("∨", () -> {
-            int dy = mainScroll.getHeight() / 2;
-            if (dy != 0) mainScroll.smoothScrollBy(0, dy);
-        }));
+        rightCol.addView(makeControlButton("∧", () -> pageScroll(-1)));
+        rightCol.addView(makeControlButton("∨", () -> pageScroll(1)));
         rightCol.addView(makeControlButton("⌫", () -> listener.onBackspace()));
+    }
+
+    /**
+     * One click = one whole page: as many rows as are fully visible, and the
+     * target is aligned to a row boundary so no half rows are left at the top
+     * or bottom (the old buttons moved half the viewport, about 2.5 rows).
+     * The last page just stops at the end of the list.
+     */
+    private void pageScroll(int direction) {
+        int rowPx = dp(GRID_ROW_HEIGHT_DP);
+        int viewport = mainScroll.getHeight();
+        if (rowPx <= 0 || viewport <= 0) return;
+        int pageRows = Math.max(1, viewport / rowPx);
+        int max = Math.max(0, grid.getHeight() - viewport);
+        int currentRow = Math.round(mainScroll.getScrollY() / (float) rowPx);
+        int target = (currentRow + direction * pageRows) * rowPx;
+        target = Math.max(0, Math.min(max, target));
+        mainScroll.smoothScrollTo(0, target);
     }
 
     private TextView makeControlButton(String label, Runnable onClick) {
@@ -166,12 +178,6 @@ public class ExpandedCandidatesView extends LinearLayout {
                 (safeAlts.isEmpty() && safeFallback.isEmpty()) ? GONE : VISIBLE);
         renderLeftStrip(safeAlts, safeFallback);
         renderGrid(candidates, gridStartIndex);
-        // A new syllable / candidate result must start at the first item,
-        // not inherit the previous syllable's scroll position.
-        post(() -> {
-            leftScroll.scrollTo(0, 0);
-            mainScroll.scrollTo(0, 0);
-        });
     }
 
     private void renderLeftStrip(List<InputKernel.PinyinAlt> alts, String fallbackLetters) {
