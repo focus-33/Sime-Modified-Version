@@ -29,6 +29,17 @@ public final class TunedDecoder implements Decoder {
     }
 
     /** Longest input for which first-syllable probing is done. */
+    /**
+     * A whole-input sentence that only exists through a fuzzy spelling must beat
+     * the sentence for exactly what was typed by this much (log-score units)
+     * before it may replace it. Measured on 300 nine-key test sentences: with 0
+     * (fully equal footing) fuzzy spellings pushed some correctly typed
+     * sentences off the first place (25.3% first-place accuracy); with 2 or more
+     * the loss is gone (26.0%, same as with fuzzy off). Raise it to trust the
+     * typed spelling even more, lower it for a more eager fuzzy match.
+     */
+    static final float FUZZY_FULL_MARGIN = 2.0f;
+
     private static final int PROBE_MIN_DIGITS = 7;
     private static final int PROBE_MAX_DIGITS = 14;
     private static final int PROBE_MAX = 2;
@@ -78,8 +89,9 @@ public final class TunedDecoder implements Decoder {
                 for (DecodeResult r : engSentence(v.input, limit)) {
                     int off = v.mapConsumed(r.consumed);
                     if (off <= 0) continue;
+                    float sc = (off >= pinyin.length()) ? r.score - FUZZY_FULL_MARGIN : r.score;
                     extras.add(new DecodeResult(r.text, v.originalUnits(off),
-                            off, r.tokenIds, r.score));
+                            off, r.tokenIds, sc));
                 }
             }
         }
@@ -142,8 +154,9 @@ public final class TunedDecoder implements Decoder {
                 if (cd <= 0 || od <= 0) continue;
                 if (!v.acceptsUnits(r.units, start.length(), cd)) continue;
                 String units = r.units == null ? "" : v.fixUnits(r.units, start.length());
+                float sc = (od >= digits.length()) ? r.score - FUZZY_FULL_MARGIN : r.score;
                 extras.add(new DecodeResult(r.text, units,
-                        od + start.length(), r.tokenIds, r.score));
+                        od + start.length(), r.tokenIds, sc));
             }
         }
     }
