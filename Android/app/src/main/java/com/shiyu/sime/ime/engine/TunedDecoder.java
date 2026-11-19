@@ -316,7 +316,7 @@ public final class TunedDecoder implements Decoder {
      * -6.0 to -5.5 to also catch borderline cases such as 佛教还目标 at -5.75). They are removed, not just
      * moved back.
      */
-    static final float NONSENSE_PER_SYLLABLE = -6.5f;
+    static final float NONSENSE_PER_SYLLABLE = -5.0f;
     private static final int NONSENSE_MIN_SYLLABLES = 3;
     private static final int NONSENSE_MAX_SYLLABLES = 8;
 
