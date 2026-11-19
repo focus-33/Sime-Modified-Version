@@ -108,7 +108,7 @@ public class CandidatesBar extends FrameLayout {
      * symbols up by this fraction of that empty line's height: 0 = unchanged,
      * 0.33 = one third (default), 0.5 = halfway, 1 = all the way up.
      */
-    private static final float PICKER_RAISE_FRACTION = 0.45f;
+    private static final float PICKER_RAISE_FRACTION = 0.38f;
     /** True while the 1-key symbol list is shown: spread the symbols evenly. */
     private boolean pickerMode = false;
     private boolean languageEnglish = false;
