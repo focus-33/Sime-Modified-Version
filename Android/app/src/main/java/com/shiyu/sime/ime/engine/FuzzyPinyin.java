@@ -15,8 +15,7 @@ import java.util.Set;
 public final class FuzzyPinyin {
     public static final int Z_ZH = 1;
     public static final int C_CH = 2;
-    /** Finals un <-> iong after j/q/x/y: xun <-> xiong, jun <-> jiong, qun <-> qiong, yun <-> yong. */
-    public static final int UN_IONG = 4;
+    public static final int S_SH = 4;
     /** xue <-> xie. */
     public static final int XUE_XIE = 8;
     public static final int EN_ENG = 16;
@@ -25,7 +24,7 @@ public final class FuzzyPinyin {
     public static final int UN_ONG = 64;
     /** Finals iong <-> ong: a typed xong / qong / jong also tries xiong / qiong / jiong. */
     public static final int IONG_ONG = 128;
-    public static final int DEFAULT_MASK = Z_ZH | C_CH | XUE_XIE | EN_ENG | IN_ING;
+    public static final int DEFAULT_MASK = Z_ZH | C_CH | S_SH | XUE_XIE | EN_ENG | IN_ING;
     private static final int MAX_VARIANTS = 6;
 
     private static final Set<String> SYLLABLES = new HashSet<>(Arrays.asList((
@@ -63,23 +62,6 @@ public final class FuzzyPinyin {
             "jong", "qong", "xong"));
 
     private FuzzyPinyin() {}
-
-    /**
-     * End offset of the longest prefix of {@code input} that is at most
-     * {@code maxLen} chars long and ends at a syllable boundary (0 if none).
-     */
-    public static int windowEnd(String input, int maxLen) {
-        List<String> toks = new ArrayList<>();
-        List<String> seps = new ArrayList<>();
-        tokenize(input, toks, seps, 0);
-        int cum = 0, best = 0;
-        for (int i = 0; i < toks.size(); i++) {
-            cum += toks.get(i).length() + seps.get(i).length();
-            if (cum > maxLen) break;
-            best = cum;
-        }
-        return best;
-    }
 
     public static boolean isSyllable(String s) { return SYLLABLES.contains(s); }
 
@@ -190,6 +172,10 @@ public final class FuzzyPinyin {
             if (t.startsWith("ch")) return "c" + t.substring(2);
             if (t.startsWith("c")) return "ch" + t.substring(1);
         }
+        if ((mask & S_SH) != 0) {
+            if (t.startsWith("sh")) return "s" + t.substring(2);
+            if (t.startsWith("s")) return "sh" + t.substring(1);
+        }
         return null;
     }
 
@@ -206,17 +192,6 @@ public final class FuzzyPinyin {
         if ((mask & IN_ING) != 0) {
             if (t.endsWith("ing")) r.add(t.substring(0, t.length() - 1));
             else if (t.endsWith("in")) r.add(t + "g");
-        }
-        if ((mask & UN_IONG) != 0) {
-            if (t.length() == 5 && t.endsWith("iong") && "jqx".indexOf(t.charAt(0)) >= 0) {
-                r.add(t.charAt(0) + "un");              // xiong -> xun
-            } else if (t.length() == 3 && t.endsWith("un") && "jqx".indexOf(t.charAt(0)) >= 0) {
-                r.add(t.charAt(0) + "iong");            // xun -> xiong
-            } else if (t.equals("yong")) {
-                r.add("yun");
-            } else if (t.equals("yun")) {
-                r.add("yong");
-            }
         }
         if ((mask & UN_ONG) != 0) {
             if (t.endsWith("ong")) r.add(t.substring(0, t.length() - 3) + "un");

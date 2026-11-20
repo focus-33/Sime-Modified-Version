@@ -55,6 +55,14 @@ public class ExpandedCandidatesView extends LinearLayout {
      */
     private static final int GRID_ROW_HEIGHT_DP = 46;
 
+    /**
+     * Rows moved by one click of the up / down buttons. 5 = one page (the grid
+     * shows 5 rows). Lower it to scroll less per click, raise it to scroll
+     * more; 0 = automatic (the number of rows that fit completely, which is
+     * usually 4 here because the 5th row is slightly cut off).
+     */
+    private static final int PAGE_SCROLL_ROWS = 5;
+
     private final SimeTheme theme;
 
     private ScrollView leftScroll;
@@ -122,7 +130,7 @@ public class ExpandedCandidatesView extends LinearLayout {
     }
 
     /**
-     * One click = one whole page: as many rows as are fully visible, and the
+     * One click = PAGE_SCROLL_ROWS rows (one page), and the
      * target is aligned to a row boundary so no half rows are left at the top
      * or bottom (the old buttons moved half the viewport, about 2.5 rows).
      * The last page just stops at the end of the list.
@@ -131,7 +139,7 @@ public class ExpandedCandidatesView extends LinearLayout {
         int rowPx = dp(GRID_ROW_HEIGHT_DP);
         int viewport = mainScroll.getHeight();
         if (rowPx <= 0 || viewport <= 0) return;
-        int pageRows = Math.max(1, viewport / rowPx);
+        int pageRows = PAGE_SCROLL_ROWS > 0 ? PAGE_SCROLL_ROWS : Math.max(1, viewport / rowPx);
         int max = Math.max(0, grid.getHeight() - viewport);
         int currentRow = Math.round(mainScroll.getScrollY() / (float) rowPx);
         int target = (currentRow + direction * pageRows) * rowPx;

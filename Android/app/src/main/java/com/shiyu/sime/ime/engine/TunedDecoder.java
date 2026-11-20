@@ -40,10 +40,6 @@ public final class TunedDecoder implements Decoder {
      */
     static final float FUZZY_FULL_MARGIN = 2.0f;
 
-    /** Longest stretch (letters / digits) that is decoded again for fuzzy matching on long input. */
-    private static final int FUZZY_WINDOW = 14;
-    private static final int FUZZY_WINDOW_DIGITS = 12;
-
     private static final int PROBE_MIN_DIGITS = 7;
     private static final int PROBE_MAX_DIGITS = 14;
     private static final int PROBE_MAX = 2;
@@ -85,28 +81,15 @@ public final class TunedDecoder implements Decoder {
         DecodeResult[] orig = engSentence(pinyin, limit);
         List<DecodeResult> extras = new ArrayList<>();
         if (pinyin != null && pinyin.matches("[a-z']+")) {
-            // Long input: a variant of the whole sentence would be a long extra
-            // decode. Only the first words matter for the next pick anyway, so
-            // vary just the opening stretch and keep its whole words.
-            String text = pinyin;
-            boolean windowed = false;
-            if (pinyin.length() > FUZZY_WINDOW) {
-                int end = FuzzyPinyin.windowEnd(pinyin, FUZZY_WINDOW);
-                if (end > 0 && end < pinyin.length()) {
-                    text = pinyin.substring(0, end);
-                    windowed = true;
-                }
-            }
-            List<FuzzyPinyin.Variant> vs = FuzzyPinyin.variants(text, fuzzyMask.getAsInt());
-            int cap = windowed ? 4 : 6;
+            List<FuzzyPinyin.Variant> vs = FuzzyPinyin.variants(pinyin, fuzzyMask.getAsInt());
+            // Every variant is a full extra decode, so do fewer on long input.
+            int cap = pinyin.length() <= 14 ? 6 : (pinyin.length() <= 24 ? 2 : 0);
             if (vs.size() > cap) vs = vs.subList(0, cap);
             for (FuzzyPinyin.Variant v : vs) {
                 for (DecodeResult r : engSentence(v.input, limit)) {
                     int off = v.mapConsumed(r.consumed);
                     if (off <= 0) continue;
-                    if (windowed && !isCompleteWord(r)) continue;
-                    float sc = (!windowed && off >= pinyin.length())
-                            ? r.score - FUZZY_FULL_MARGIN : r.score;
+                    float sc = (off >= pinyin.length()) ? r.score - FUZZY_FULL_MARGIN : r.score;
                     extras.add(new DecodeResult(r.text, v.originalUnits(off),
                             off, r.tokenIds, sc));
                 }
@@ -152,13 +135,6 @@ public final class TunedDecoder implements Decoder {
     private void addDigitVariants(List<DecodeResult> extras, DecodeResult[] orig,
                                   String start, String digits, int mask, int limit) {
         if (digits.length() < 2) return;
-        // Long input: vary only the opening stretch (see decodeSentenceTuned).
-        String text = digits;
-        boolean windowed = false;
-        if (digits.length() > FUZZY_WINDOW_DIGITS) {
-            text = digits.substring(0, FUZZY_WINDOW_DIGITS);
-            windowed = true;
-        }
         Set<Integer> bounds = null;
         if (orig.length > 0 && orig[0].units != null
                 && digits.indexOf('\'') < 0 && start.isEmpty()) {
@@ -170,34 +146,19 @@ public final class TunedDecoder implements Decoder {
                 bounds.add(off);
             }
         }
-        int cap = windowed ? 4 : digitVariantCap(digits.length());
-        for (FuzzyPinyin.DigitVariant v : FuzzyPinyin.digitVariants(text, mask, bounds, cap)) {
+        for (FuzzyPinyin.DigitVariant v :
+                FuzzyPinyin.digitVariants(digits, mask, bounds, digitVariantCap(digits.length()))) {
             for (DecodeResult r : engNum(start, v.digits, limit)) {
                 int cd = r.consumed - start.length();
                 int od = v.mapConsumed(cd);
                 if (cd <= 0 || od <= 0) continue;
                 if (!v.acceptsUnits(r.units, start.length(), cd)) continue;
-                if (windowed && !isCompleteWord(r)) continue;
                 String units = r.units == null ? "" : v.fixUnits(r.units, start.length());
-                float sc = (!windowed && od >= digits.length())
-                        ? r.score - FUZZY_FULL_MARGIN : r.score;
+                float sc = (od >= digits.length()) ? r.score - FUZZY_FULL_MARGIN : r.score;
                 extras.add(new DecodeResult(r.text, units,
                         od + start.length(), r.tokenIds, sc));
             }
         }
-    }
-
-    /**
-     * A single dictionary word spelled with complete syllables (no
-     * sentence, no abbreviation, no unfinished last syllable). The only kind
-     * of result taken from the windowed fuzzy decode of a long input.
-     */
-    private static boolean isCompleteWord(DecodeResult r) {
-        if (r.tokenIds == null || r.tokenIds.length != 1 || !isChinese(r)) return false;
-        for (String piece : r.units.split("'")) {
-            if (!FuzzyPinyin.isSyllable(piece) && !FuzzyPinyin.isPseudo(piece)) return false;
-        }
-        return true;
     }
 
     /**
