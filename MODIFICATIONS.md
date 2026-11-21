@@ -157,3 +157,20 @@
 - 测试里针对模糊拼音的用例。
 
 删除前后在项目自带测试句上的结果相同：首位正确 26.0% / 63.3%（短句 / 长句），候选列表含正确句 26.0% / 65.0%。
+
+
+## 本轮修改：独立模糊拼音引擎（SFPE）
+
+1. **新增纯 Java 模糊拼音模块**：`FuzzyPinyinEngine`、`FuzzyPinyinRules`、`FuzzyVariant` 和 `FuzzyPinyinDecoder`，与现有 JNI/C++ 词库解码器分离。
+2. **首批规则**：`en/eng`、`in/ing` 双向转换；规则只作用于合法完整音节的韵母部分，例如 `heng` ↔ `hen`、`ying` ↔ `yin`，不对任意字母子串做替换。
+3. **解析策略**：通过合法音节表进行前向/后向动态规划边界验证；允许最后一个音节尚未输入完成，但此前参与转换的音节必须完整。每条候选路径最多进行一次模糊转换；每次全拼解码最多生成 8 个变体，九宫格每次最多额外调用解码器 8 次。
+4. **全拼与九宫格**：全拼变体直接调用原解码器；九宫格既处理已经选定的拼音字母前缀，也处理数字串中的合法音节路径。数字长度因 `en/eng`、`in/ing` 转换而改变时，会把解码器返回的 `consumed` 映射回用户实际输入长度；落在被转换音节内部的部分匹配会被拒绝。
+5. **候选融合**：原始精确解码结果保持在前；模糊结果追加在后，并施加 1.25 的分数惩罚。同一候选按文字和原始输入消费长度去重。`DecodeResult` 增加模糊匹配次数和惩罚值字段，输入核心及简繁转换复制结果时保留这些信息。
+6. **接入位置**：`SimeService` 将 `FuzzyPinyinDecoder` 放在 `SimeEngineDecoder` 外层、`TunedDecoder` 内层；未修改 C++ Trie、GRU 模型、JNI 接口或词库。
+7. **自动化测试**：新增 `FuzzyPinyinEngineTest` 和 `FuzzyPinyinDecoderTest`，覆盖全拼、T9、显式音节分隔、部分末尾音节、输入长度映射、精确候选优先及 `yinyulaoshi` 不生成 `yinyuelaoshi` 变体。
+
+### 验证状态
+
+- 使用本机 `javac` 对独立引擎类、`TunedDecoder` 及相关测试进行了编译。
+- 运行新增 SFPE 测试和原有 `TunedDecoderPolicyTest`：**23 项全部通过**。测试通过临时 JUnit 兼容断言运行器执行；不是 Gradle/JUnit 真实任务。
+- **尚未执行 Android Gradle 构建、native 集成测试或 Pixel 3 实机测试**：本次上传包没有 `gradle-wrapper.jar`，当前工作环境也没有安装 Gradle/Android SDK/NDK。需要在 GitHub Actions 或 Android Studio 环境完成 APK 构建后，再进行实际候选验证。
