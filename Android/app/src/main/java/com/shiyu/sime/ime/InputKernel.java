@@ -1115,7 +1115,8 @@ public class InputKernel {
             if (consumed <= 0) continue;
             String key = text + "\u0001" + consumed;
             if (!seenKeys.add(key)) continue;
-            DecodeResult c = new DecodeResult(text, r.units != null ? r.units : "", consumed, r.tokenIds);
+            DecodeResult c = new DecodeResult(text, r.units != null ? r.units : "", consumed, r.tokenIds,
+                    r.score, r.fuzzyMatchCount, r.fuzzyPenalty);
             out.add(c);
             if (topCandidate == null) topCandidate = c;
         }
@@ -1427,7 +1428,8 @@ public class InputKernel {
             if (trad.equals(r.text)) {
                 out.add(r);
             } else {
-                out.add(new DecodeResult(trad, r.units, r.consumed, r.tokenIds));
+                out.add(new DecodeResult(trad, r.units, r.consumed, r.tokenIds, r.score,
+                        r.fuzzyMatchCount, r.fuzzyPenalty));
             }
         }
         return out;

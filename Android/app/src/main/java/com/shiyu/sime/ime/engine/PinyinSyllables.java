@@ -3,6 +3,7 @@ package com.shiyu.sime.ime.engine;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Collections;
 import java.util.Set;
 
 /**
@@ -40,6 +41,11 @@ public final class PinyinSyllables {
     private PinyinSyllables() {}
 
     public static boolean isSyllable(String s) { return SYLLABLES.contains(s); }
+
+    /** Immutable view used by the independent fuzzy-pinyin parser. */
+    public static Set<String> allSyllables() {
+        return Collections.unmodifiableSet(SYLLABLES);
+    }
 
     private static Set<String> prefixes;
 

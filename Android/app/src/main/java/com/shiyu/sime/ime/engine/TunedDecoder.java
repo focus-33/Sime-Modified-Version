@@ -427,7 +427,8 @@ public final class TunedDecoder implements Decoder {
             if (u != in[i].units) {
                 if (out == null) out = in.clone();
                 DecodeResult r = in[i];
-                out[i] = new DecodeResult(r.text, u, r.consumed, r.tokenIds, r.score);
+                out[i] = new DecodeResult(r.text, u, r.consumed, r.tokenIds, r.score,
+                        r.fuzzyMatchCount, r.fuzzyPenalty);
             }
         }
         return out == null ? in : out;

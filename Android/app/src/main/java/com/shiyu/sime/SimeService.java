@@ -17,6 +17,7 @@ import com.shiyu.sime.ime.KeyboardMode;
 import com.shiyu.sime.ime.data.ClipboardWatcher;
 import com.shiyu.sime.ime.data.TraditionalConverter;
 import com.shiyu.sime.ime.engine.CandidateTuning;
+import com.shiyu.sime.ime.engine.FuzzyPinyinDecoder;
 import com.shiyu.sime.ime.engine.SimeEngineDecoder;
 import com.shiyu.sime.ime.engine.TunedDecoder;
 import com.shiyu.sime.ime.prefs.SimePrefs;
@@ -62,7 +63,7 @@ public class SimeService extends InputMethodService
         CandidateTuning tuning = new CandidateTuning(new File(rankDir, "candidate_rank.txt"));
         CandidateTuning.setShared(tuning);
         kernel = new InputKernel(new TunedDecoder(
-                new SimeEngineDecoder(engine), tuning));
+                new FuzzyPinyinDecoder(new SimeEngineDecoder(engine)), tuning));
         kernel.setTuning(tuning);
         engine.setOnReadyListener(kernel::onEngineReady);
         kernel.setPersonalDictionary(
