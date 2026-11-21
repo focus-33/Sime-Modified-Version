@@ -35,6 +35,24 @@ public class TunedDecoderPolicyTest {
     }
 
     @Test
+    public void fuzzyFirstWordAlternativesShareTheBestSentenceBoundary() {
+        List<DecodeResult> in = Arrays.asList(
+                r("原型是行为", "yuan'xing'shi'xing'wei", 18, -20f),
+                r("原型", "yuan'xing", 8, -8f),
+                r("远行", "yuan'xing", 8, -9f),
+                r("元", "yuan", 4, -7f),
+                r("试验", "shi'yan", 7, -10f),
+                r("行为", "xing'wei", 10, -11f),
+                r("因为", "yin'wei", 10, -12f),
+                new DecodeResult("原因", "yuan'ying", 8, new int[] {1},
+                        -13f, 1, 1.2f));
+
+        List<String> result = texts(TunedDecoder.limitLongSentences(in));
+        assertEquals(Arrays.asList("原型是行为", "原型", "远行", "原因", "元", "试验", "行为", "因为"),
+                result);
+    }
+
+    @Test
     public void fourSyllableInputKeepsTwoWholeCandidates() {
         List<DecodeResult> in = Arrays.asList(
                 r("一心一意", "yi'xin'yi'yi", 9, -12f),
