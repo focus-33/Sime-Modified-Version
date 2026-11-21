@@ -8,6 +8,9 @@ public final class FuzzyVariant {
     private final int sourceStart;
     private final int sourceEnd;
     private final int targetEnd;
+    private final String sourceSyllable;
+    private final int sourceStartUnits;
+    private final int targetEndUnits;
 
     FuzzyVariant(String original, int sourceStart, int sourceEnd,
                  String replacement, String ruleId, float penalty) {
@@ -16,8 +19,57 @@ public final class FuzzyVariant {
         this.sourceStart = sourceStart;
         this.sourceEnd = sourceEnd;
         this.targetEnd = sourceStart + replacement.length();
+        this.sourceSyllable = original.substring(sourceStart, sourceEnd);
+        this.sourceStartUnits = original.substring(0, sourceStart).replace("\'", "").length();
+        this.targetEndUnits = sourceStartUnits + replacement.length();
         this.ruleId = ruleId;
         this.penalty = penalty;
+    }
+
+    /** True when an exact result stops inside the original syllable being fuzzy-matched. */
+    public boolean consumesPartialSource(int originalConsumed) {
+        return consumesPartialSource(originalConsumed, 0);
+    }
+
+    public boolean consumesPartialSource(int originalConsumed, int offset) {
+        int relative = originalConsumed - offset;
+        return relative > sourceStart && relative < sourceEnd;
+    }
+
+    /**
+     * Restores the original spelling in a decoder's segmented units while
+     * preserving apostrophe boundaries. The decoder may return units in the
+     * transformed spelling (for example yuan'yin); UI/state must retain the
+     * user's actual input spelling (yuan'ying).
+     */
+    public String restoreUnits(String units) {
+        return restoreUnits(units, 0);
+    }
+
+    public String restoreUnits(String units, int offset) {
+        if (units == null || units.isEmpty()) return units;
+        StringBuilder out = new StringBuilder(units.length() + 2);
+        int flatIndex = 0;
+        boolean restored = false;
+        int skipUntil = targetEndUnits + offset;
+        for (int i = 0; i < units.length(); i++) {
+            char c = units.charAt(i);
+            if (c == '\'') {
+                out.append(c);
+                continue;
+            }
+            if (!restored && flatIndex == sourceStartUnits + offset) {
+                out.append(sourceSyllable);
+                restored = true;
+            }
+            if (restored && flatIndex < skipUntil) {
+                flatIndex++;
+                continue;
+            }
+            out.append(c);
+            flatIndex++;
+        }
+        return restored ? out.toString() : units;
     }
 
     /**

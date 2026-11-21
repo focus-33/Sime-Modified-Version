@@ -1,7 +1,6 @@
 package com.shiyu.sime.ime.engine;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -43,6 +42,7 @@ public final class FuzzyPinyinDecoder implements Decoder {
         List<DecodeResult> fuzzy = new ArrayList<>();
         Set<String> exactKeys = keys(exact);
         Map<String, DecodeResult> best = new HashMap<>();
+        Map<String, FuzzyOrigin> origins = new HashMap<>();
 
         // T9 syllables already selected in the letter strip: transform only
         // that explicit prefix, leaving the still-ambiguous digit suffix intact.
@@ -50,7 +50,7 @@ public final class FuzzyPinyinDecoder implements Decoder {
         for (FuzzyVariant v : FuzzyPinyinEngine.expandPinyin(start)) {
             if (queries++ >= MAX_T9_QUERIES) break;
             DecodeResult[] found = safe(base.decodeNumSentence(v.value, nums, limit));
-            collectMappedStart(found, v, exactKeys, best);
+            collectMappedStart(found, v, exactKeys, best, origins);
         }
 
         // Unselected T9 digits: syllable boundaries are inferred only when the
@@ -58,15 +58,12 @@ public final class FuzzyPinyinDecoder implements Decoder {
         for (FuzzyVariant v : FuzzyPinyinEngine.expandT9(nums)) {
             if (queries++ >= MAX_T9_QUERIES) break;
             DecodeResult[] found = safe(base.decodeNumSentence(start, v.value, limit));
-            collectMappedDigits(found, v, start.length(), exactKeys, best);
+            collectMappedDigits(found, v, start.length(), exactKeys, best, origins);
         }
 
         fuzzy.addAll(best.values());
         fuzzy.sort((a, b) -> Float.compare(b.score, a.score));
-        if (fuzzy.size() > MAX_FUZZY_RESULTS) {
-            fuzzy = new ArrayList<>(fuzzy.subList(0, MAX_FUZZY_RESULTS));
-        }
-        return concat(exact, fuzzy);
+        return mergeExactAndFuzzy(exact, fuzzy, origins);
     }
 
     private interface VariantQuery {
@@ -82,32 +79,32 @@ public final class FuzzyPinyinDecoder implements Decoder {
         if (variants.isEmpty()) return exact;
         Set<String> exactKeys = keys(exact);
         Map<String, DecodeResult> best = new HashMap<>();
+        Map<String, FuzzyOrigin> origins = new HashMap<>();
         for (FuzzyVariant variant : variants) {
             DecodeResult[] found = safe(query.decode(variant));
             for (DecodeResult r : found) {
                 int mapped = variant.mapConsumed(consumedReader.get(r));
-                addFuzzy(r, mapped, variant, exactKeys, best);
+                addFuzzy(r, mapped, variant, 0, true, exactKeys, best, origins);
             }
         }
         List<DecodeResult> fuzzy = new ArrayList<>(best.values());
         fuzzy.sort((a, b) -> Float.compare(b.score, a.score));
-        if (fuzzy.size() > MAX_FUZZY_RESULTS) {
-            fuzzy = new ArrayList<>(fuzzy.subList(0, MAX_FUZZY_RESULTS));
-        }
-        return concat(exact, fuzzy);
+        return mergeExactAndFuzzy(exact, fuzzy, origins);
     }
 
     private static void collectMappedStart(DecodeResult[] found, FuzzyVariant variant,
                                            Set<String> exactKeys,
-                                           Map<String, DecodeResult> best) {
+                                           Map<String, DecodeResult> best,
+                                           Map<String, FuzzyOrigin> origins) {
         for (DecodeResult r : found) {
-            addFuzzy(r, variant.mapConsumed(r.consumed), variant, exactKeys, best);
+            addFuzzy(r, variant.mapConsumed(r.consumed), variant, 0, true, exactKeys, best, origins);
         }
     }
 
     private static void collectMappedDigits(DecodeResult[] found, FuzzyVariant variant,
                                             int prefixLength, Set<String> exactKeys,
-                                            Map<String, DecodeResult> best) {
+                                            Map<String, DecodeResult> best,
+                                            Map<String, FuzzyOrigin> origins) {
         for (DecodeResult r : found) {
             int mapped;
             if (r.consumed <= prefixLength) {
@@ -116,20 +113,69 @@ public final class FuzzyPinyinDecoder implements Decoder {
                 int mappedDigits = variant.mapConsumed(r.consumed - prefixLength);
                 mapped = mappedDigits < 0 ? -1 : prefixLength + mappedDigits;
             }
-            addFuzzy(r, mapped, variant, exactKeys, best);
+            addFuzzy(r, mapped, variant, prefixLength, false, exactKeys, best, origins);
         }
     }
 
     private static void addFuzzy(DecodeResult r, int mappedConsumed,
-                                 FuzzyVariant variant, Set<String> exactKeys,
-                                 Map<String, DecodeResult> best) {
+                                 FuzzyVariant variant, int unitsOffset, boolean restoreUnits,
+                                 Set<String> exactKeys, Map<String, DecodeResult> best,
+                                 Map<String, FuzzyOrigin> origins) {
         if (r == null || r.text == null || r.text.isEmpty() || mappedConsumed <= 0) return;
         String key = r.text + "\u0001" + mappedConsumed;
         if (exactKeys.contains(key)) return;
-        DecodeResult candidate = new DecodeResult(r.text, r.units, mappedConsumed,
+        DecodeResult candidate = new DecodeResult(r.text, restoreUnits ? variant.restoreUnits(r.units, unitsOffset) : r.units, mappedConsumed,
                 r.tokenIds, r.score - variant.penalty, 1, variant.penalty);
         DecodeResult old = best.get(key);
-        if (old == null || candidate.score > old.score) best.put(key, candidate);
+        if (old == null || candidate.score > old.score) {
+            best.put(key, candidate);
+            origins.put(key, new FuzzyOrigin(variant, unitsOffset));
+        }
+    }
+
+    private static final class FuzzyOrigin {
+        final FuzzyVariant variant;
+        final int offset;
+        FuzzyOrigin(FuzzyVariant variant, int offset) {
+            this.variant = variant;
+            this.offset = offset;
+        }
+    }
+
+    /** Replace an exact candidate that ended inside the fuzzy syllable with
+     * its full-input fuzzy counterpart, preserving its original list position. */
+    private static DecodeResult[] mergeExactAndFuzzy(DecodeResult[] exact,
+                                                       List<DecodeResult> fuzzy,
+                                                       Map<String, FuzzyOrigin> origins) {
+        if (fuzzy.isEmpty()) return exact;
+        Map<String, DecodeResult> replacements = new HashMap<>();
+        Set<String> used = new HashSet<>();
+        for (DecodeResult f : fuzzy) {
+            FuzzyOrigin origin = origins.get(f.text + "\u0001" + f.consumed);
+            if (origin == null) continue;
+            for (DecodeResult e : exact) {
+                if (e.text.equals(f.text) && e.consumed < f.consumed
+                        && origin.variant.consumesPartialSource(e.consumed, origin.offset)) {
+                    replacements.put(e.text + "\u0001" + e.consumed, f);
+                    used.add(f.text + "\u0001" + f.consumed);
+                    break;
+                }
+            }
+        }
+        List<DecodeResult> out = new ArrayList<>(exact.length + fuzzy.size());
+        for (DecodeResult e : exact) {
+            DecodeResult replacement = replacements.get(e.text + "\u0001" + e.consumed);
+            out.add(replacement == null ? e : replacement);
+        }
+        int appended = 0;
+        for (DecodeResult f : fuzzy) {
+            if (!used.contains(f.text + "\u0001" + f.consumed)) {
+                if (appended >= MAX_FUZZY_RESULTS) break;
+                out.add(f);
+                appended++;
+            }
+        }
+        return out.toArray(new DecodeResult[0]);
     }
 
     private static Set<String> keys(DecodeResult[] results) {
@@ -137,13 +183,6 @@ public final class FuzzyPinyinDecoder implements Decoder {
         for (DecodeResult r : results) {
             if (r != null && r.text != null) out.add(r.text + "\u0001" + r.consumed);
         }
-        return out;
-    }
-
-    private static DecodeResult[] concat(DecodeResult[] exact, List<DecodeResult> fuzzy) {
-        if (fuzzy.isEmpty()) return exact;
-        DecodeResult[] out = Arrays.copyOf(exact, exact.length + fuzzy.size());
-        for (int i = 0; i < fuzzy.size(); i++) out[exact.length + i] = fuzzy.get(i);
         return out;
     }
 
