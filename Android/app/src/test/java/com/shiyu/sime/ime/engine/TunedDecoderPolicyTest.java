@@ -146,13 +146,4 @@ public class TunedDecoderPolicyTest {
         assertEquals("lue'guo", TunedDecoder.unitsOut("lve'guo"));
         assertEquals("nue", TunedDecoder.unitsOut("nve"));
     }
-
-    @Test
-    public void fuzzySpellingsAreNotTreatedAsAbbreviations() {
-        List<DecodeResult> in = Arrays.asList(
-                r("利欲熏心", "li'yu'xong'xin", 11, -14f));   // xong typed for xun
-
-        assertEquals(Arrays.asList("利欲熏心"),
-                texts(TunedDecoder.dropAbbreviations(in)));
-    }
 }

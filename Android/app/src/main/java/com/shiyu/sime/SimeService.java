@@ -61,9 +61,8 @@ public class SimeService extends InputMethodService
         rankDir.mkdirs();
         CandidateTuning tuning = new CandidateTuning(new File(rankDir, "candidate_rank.txt"));
         CandidateTuning.setShared(tuning);
-        SimePrefs fuzzyPrefs = new SimePrefs(this);
         kernel = new InputKernel(new TunedDecoder(
-                new SimeEngineDecoder(engine), tuning, fuzzyPrefs::getFuzzyMask));
+                new SimeEngineDecoder(engine), tuning));
         kernel.setTuning(tuning);
         engine.setOnReadyListener(kernel::onEngineReady);
         kernel.setPersonalDictionary(

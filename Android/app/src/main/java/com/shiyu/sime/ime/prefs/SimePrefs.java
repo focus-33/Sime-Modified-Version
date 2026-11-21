@@ -16,7 +16,6 @@ public final class SimePrefs {
     private static final String KEY_CHINESE_LAYOUT = "chinese_layout";
     private static final String KEY_PREDICTION_ENABLED = "prediction_enabled";
     private static final String KEY_VIBRATION_ENABLED = "vibration_enabled";
-    private static final String KEY_FUZZY_MASK = "fuzzy_pinyin_mask";
     private static final String KEY_AUTO_SPACE_ENGLISH_WORDS =
             "auto_space_english_words";
     private static final String KEY_TRADITIONAL_ENABLED = "traditional_enabled";
@@ -73,15 +72,5 @@ public final class SimePrefs {
 
     public void setAutoSpaceEnglishWords(boolean enabled) {
         sp.edit().putBoolean(KEY_AUTO_SPACE_ENGLISH_WORDS, enabled).apply();
-    }
-
-    /** Bit mask of enabled fuzzy-pinyin pairs, see FuzzyPinyin. */
-    public int getFuzzyMask() {
-        return sp.getInt(KEY_FUZZY_MASK,
-                com.shiyu.sime.ime.engine.FuzzyPinyin.DEFAULT_MASK);
-    }
-
-    public void setFuzzyMask(int mask) {
-        sp.edit().putInt(KEY_FUZZY_MASK, mask).apply();
     }
 }

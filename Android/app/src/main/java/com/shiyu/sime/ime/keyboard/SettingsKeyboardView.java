@@ -9,7 +9,6 @@ import com.shiyu.sime.ime.keyboard.framework.KeyboardContainer;
 import com.shiyu.sime.ime.keyboard.layouts.SettingsLayout;
 import com.shiyu.sime.ime.keyboard.layouts.SettingsNode;
 import com.shiyu.sime.ime.engine.CandidateTuning;
-import com.shiyu.sime.ime.engine.FuzzyPinyin;
 import com.shiyu.sime.ime.prefs.SimePrefs;
 
 import java.util.ArrayDeque;
@@ -116,21 +115,11 @@ public class SettingsKeyboardView extends KeyboardView {
         SettingsNode t9 = SettingsNode.leaf("九宫格",
                 () -> pickLayout(ChineseLayout.T9),
                 () -> prefs.getChineseLayout() == ChineseLayout.T9);
-        SettingsNode fuzzyCat = SettingsNode.category("模糊音",
-                fuzzyToggle("z/zh", FuzzyPinyin.Z_ZH),
-                fuzzyToggle("c/ch", FuzzyPinyin.C_CH),
-                fuzzyToggle("s/sh", FuzzyPinyin.S_SH),
-                fuzzyToggle("xue/xie", FuzzyPinyin.XUE_XIE),
-                fuzzyToggle("en/eng", FuzzyPinyin.EN_ENG),
-                fuzzyToggle("in/ing", FuzzyPinyin.IN_ING),
-                fuzzyToggle("un/ong", FuzzyPinyin.UN_ONG),
-                fuzzyToggle("iong/ong", FuzzyPinyin.IONG_ONG));
         SettingsNode resetRank = SettingsNode.leaf("清除排序", () -> {
             CandidateTuning t = CandidateTuning.shared();
             if (t != null) t.clear();
         });
-        SettingsNode keyboardCat = SettingsNode.category("键盘", qwerty, t9,
-                fuzzyCat, resetRank);
+        SettingsNode keyboardCat = SettingsNode.category("键盘", qwerty, t9, resetRank);
         // Panel openers use toggle() with a fixed false selector so the
         // tap doesn't auto-exit settings (which would race the panel
         // mode switch and bounce us back to CHINESE). Highlight stays off.
@@ -211,12 +200,6 @@ public class SettingsKeyboardView extends KeyboardView {
                 }
             });
         }
-    }
-
-    private SettingsNode fuzzyToggle(String label, int bit) {
-        return SettingsNode.toggle(label,
-                () -> prefs.setFuzzyMask(prefs.getFuzzyMask() ^ bit),
-                () -> (prefs.getFuzzyMask() & bit) != 0);
     }
 
     private void pickLayout(ChineseLayout layout) {

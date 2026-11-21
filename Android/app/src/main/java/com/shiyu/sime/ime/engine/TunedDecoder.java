@@ -8,38 +8,19 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.List;
 import java.util.Map;
-import java.util.function.IntSupplier;
 
 /**
- * Decorates the native decoder with: fuzzy pinyin (variants decoded as if
- * typed correctly and merged by raw engine score, so they rank equally),
- * frequency-based candidates for a lone first T9 key, and the user's own
- * ordering / blocking rules.
+ * Decorates the native decoder with: frequency-based candidates for a lone
+ * first T9 key, cleaner candidate lists (no abbreviations, no stitched
+ * nonsense sentences, fewer long sentences), the lue / nue spelling fix and
+ * the user's own ordering / blocking rules.
  */
 public final class TunedDecoder implements Decoder {
     private static final String[] KEY_LETTERS = {
             "", "", "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"};
     /** a / e / o are whole syllables; keep them below real initials. */
     private static final float SYLLABLE_KEY_PENALTY = 4.0f;
-    /** Every variant is a full extra decode; do fewer as the input grows. */
-    private static int digitVariantCap(int digitCount) {
-        if (digitCount <= 12) return 8;
-        if (digitCount <= 20) return 3;
-        return 0;
-    }
-
     /** Longest input for which first-syllable probing is done. */
-    /**
-     * A whole-input sentence that only exists through a fuzzy spelling must beat
-     * the sentence for exactly what was typed by this much (log-score units)
-     * before it may replace it. Measured on 300 nine-key test sentences: with 0
-     * (fully equal footing) fuzzy spellings pushed some correctly typed
-     * sentences off the first place (25.3% first-place accuracy); with 2 or more
-     * the loss is gone (26.0%, same as with fuzzy off). Raise it to trust the
-     * typed spelling even more, lower it for a more eager fuzzy match.
-     */
-    static final float FUZZY_FULL_MARGIN = 2.0f;
-
     private static final int PROBE_MIN_DIGITS = 7;
     private static final int PROBE_MAX_DIGITS = 14;
     private static final int PROBE_MAX = 2;
@@ -56,12 +37,10 @@ public final class TunedDecoder implements Decoder {
 
     private final Decoder base;
     private final CandidateTuning tuning;
-    private final IntSupplier fuzzyMask;
 
-    public TunedDecoder(Decoder base, CandidateTuning tuning, IntSupplier fuzzyMask) {
+    public TunedDecoder(Decoder base, CandidateTuning tuning) {
         this.base = base;
         this.tuning = tuning;
-        this.fuzzyMask = fuzzyMask != null ? fuzzyMask : () -> 0;
     }
 
     public CandidateTuning tuning() { return tuning; }
@@ -80,21 +59,6 @@ public final class TunedDecoder implements Decoder {
     private DecodeResult[] decodeSentenceTuned(String pinyin, int limit) {
         DecodeResult[] orig = engSentence(pinyin, limit);
         List<DecodeResult> extras = new ArrayList<>();
-        if (pinyin != null && pinyin.matches("[a-z']+")) {
-            List<FuzzyPinyin.Variant> vs = FuzzyPinyin.variants(pinyin, fuzzyMask.getAsInt());
-            // Every variant is a full extra decode, so do fewer on long input.
-            int cap = pinyin.length() <= 14 ? 6 : (pinyin.length() <= 24 ? 2 : 0);
-            if (vs.size() > cap) vs = vs.subList(0, cap);
-            for (FuzzyPinyin.Variant v : vs) {
-                for (DecodeResult r : engSentence(v.input, limit)) {
-                    int off = v.mapConsumed(r.consumed);
-                    if (off <= 0) continue;
-                    float sc = (off >= pinyin.length()) ? r.score - FUZZY_FULL_MARGIN : r.score;
-                    extras.add(new DecodeResult(r.text, v.originalUnits(off),
-                            off, r.tokenIds, sc));
-                }
-            }
-        }
         return finish(limitLongSentences(restrictToTopSegmentation(
                 dropNonsenseSentences(dropAbbreviations(dropBannedReadings(
                         merge(orig, extras)))))));
@@ -120,45 +84,12 @@ public final class TunedDecoder implements Decoder {
         }
         DecodeResult[] orig = engNum(start, digits, limit);
         List<DecodeResult> extras = new ArrayList<>();
-        int mask = fuzzyMask.getAsInt();
-        if (mask != 0 && digits != null) {
-            addDigitVariants(extras, orig, start, digits, mask, limit);
-        }
         if (start.isEmpty() && digits != null) {
             addFirstSyllableProbes(extras, orig, digits, limit);
         }
         return finish(limitLongSentences(restrictToTopSegmentation(
                 demoteWeakSentences(dropNonsenseSentences(dropAbbreviations(
                         dropBannedReadings(merge(orig, extras))))))));
-    }
-
-    private void addDigitVariants(List<DecodeResult> extras, DecodeResult[] orig,
-                                  String start, String digits, int mask, int limit) {
-        if (digits.length() < 2) return;
-        Set<Integer> bounds = null;
-        if (orig.length > 0 && orig[0].units != null
-                && digits.indexOf('\'') < 0 && start.isEmpty()) {
-            bounds = new HashSet<>();
-            int off = 0;
-            bounds.add(0);
-            for (String tok : orig[0].units.split("'")) {
-                off += tok.length();
-                bounds.add(off);
-            }
-        }
-        for (FuzzyPinyin.DigitVariant v :
-                FuzzyPinyin.digitVariants(digits, mask, bounds, digitVariantCap(digits.length()))) {
-            for (DecodeResult r : engNum(start, v.digits, limit)) {
-                int cd = r.consumed - start.length();
-                int od = v.mapConsumed(cd);
-                if (cd <= 0 || od <= 0) continue;
-                if (!v.acceptsUnits(r.units, start.length(), cd)) continue;
-                String units = r.units == null ? "" : v.fixUnits(r.units, start.length());
-                float sc = (od >= digits.length()) ? r.score - FUZZY_FULL_MARGIN : r.score;
-                extras.add(new DecodeResult(r.text, units,
-                        od + start.length(), r.tokenIds, sc));
-            }
-        }
     }
 
     /**
@@ -177,7 +108,7 @@ public final class TunedDecoder implements Decoder {
             if (firsts.size() >= PROBE_MAX) break;
             if (!isChinese(r)) continue;
             String first = r.units.split("'")[0];
-            if (first.length() >= digits.length() || !FuzzyPinyin.isSyllable(first)) continue;
+            if (first.length() >= digits.length() || !PinyinSyllables.isSyllable(first)) continue;
             if (!firsts.contains(first)) firsts.add(first);
         }
         for (String first : firsts) {
@@ -369,8 +300,7 @@ public final class TunedDecoder implements Decoder {
     /** True if any pinyin piece is not a complete syllable (an initial only). */
     private static boolean hasAbbreviationPiece(DecodeResult r) {
         for (String piece : r.units.split("'")) {
-            if (!piece.isEmpty() && !FuzzyPinyin.isSyllable(piece)
-                    && !FuzzyPinyin.isPseudo(piece)) return true;
+            if (!piece.isEmpty() && !PinyinSyllables.isSyllable(piece)) return true;
         }
         return false;
     }
@@ -457,8 +387,8 @@ public final class TunedDecoder implements Decoder {
         for (int i = 0; i < tokens.size(); i++) {
             String t = tokens.get(i);
             boolean last = (i == tokens.size() - 1);
-            if (FuzzyPinyin.isSyllable(t)) continue;
-            if (last && FuzzyPinyin.isSyllablePrefix(t)) continue;
+            if (PinyinSyllables.isSyllable(t)) continue;
+            if (last && PinyinSyllables.isSyllablePrefix(t)) continue;
             return false;
         }
         return !tokens.isEmpty();
@@ -469,7 +399,7 @@ public final class TunedDecoder implements Decoder {
         if (typed == null || (typed.indexOf("lue") < 0 && typed.indexOf("nue") < 0)) return typed;
         List<String> tokens = new ArrayList<>();
         List<String> seps = new ArrayList<>();
-        FuzzyPinyin.tokenize(typed, tokens, seps, 0);
+        PinyinSyllables.tokenize(typed, tokens, seps);
         if (!isPinyinLike(tokens)) return typed;      // e.g. the English word "blue"
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < tokens.size(); i++) {
@@ -556,8 +486,8 @@ public final class TunedDecoder implements Decoder {
         String[] pieces = units.split("'");
         for (int i = 0; i < pieces.length; i++) {
             boolean last = (i == pieces.length - 1);
-            if (FuzzyPinyin.isSyllable(pieces[i]) || FuzzyPinyin.isPseudo(pieces[i])) continue;
-            if (last && FuzzyPinyin.isSyllablePrefix(pieces[i])) continue;
+            if (PinyinSyllables.isSyllable(pieces[i])) continue;
+            if (last && PinyinSyllables.isSyllablePrefix(pieces[i])) continue;
             return true;
         }
         return false;
@@ -580,7 +510,7 @@ public final class TunedDecoder implements Decoder {
         String[] pieces = top.units.split("'");
         if (pieces.length < 4) return in;
         for (String p : pieces) {
-            if (!FuzzyPinyin.isSyllable(p) && !FuzzyPinyin.isPseudo(p)) return in;
+            if (!PinyinSyllables.isSyllable(p)) return in;
         }
         java.util.Set<Integer> boundaries = new java.util.HashSet<>();
         int sum = 0;
