@@ -53,6 +53,27 @@ public class TunedDecoderPolicyTest {
     }
 
     @Test
+    public void fuzzyFirstWordAlternativeIsNotBuriedBehindManyExactT9Readings() {
+        List<DecodeResult> in = Arrays.asList(
+                r("原型是行为", "yuan'xing'shi'xing'wei", 18, -20f),
+                r("原型", "yuan'xing", 8, -8f),
+                r("远行", "yuan'xing", 8, -9f),
+                r("圆形", "yuan'xing", 8, -9.5f),
+                r("原形", "yuan'xing", 8, -10f),
+                r("圆型", "yuan'xing", 8, -10.5f),
+                r("元形", "yuan'xing", 8, -11f),
+                r("援行", "yuan'xing", 8, -11.5f),
+                new DecodeResult("原因", "yuan'ying", 8, new int[] {1}, -13f, 1, 1.25f),
+                r("元", "yuan", 4, -7f));
+
+        List<String> result = texts(TunedDecoder.limitLongSentences(in));
+        assertEquals("原型是行为", result.get(0));
+        assertEquals("原型", result.get(1));
+        assertEquals("远行", result.get(2));
+        assertEquals("原因", result.get(3));
+    }
+
+    @Test
     public void fourSyllableInputKeepsTwoWholeCandidates() {
         List<DecodeResult> in = Arrays.asList(
                 r("一心一意", "yi'xin'yi'yi", 9, -12f),

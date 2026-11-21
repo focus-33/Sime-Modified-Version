@@ -58,6 +58,45 @@ public class FuzzyPinyinEngineTest {
     }
 
     @Test
+    public void t9VariantRestoresOriginalPinyinUnits() {
+        FuzzyVariant match = null;
+        for (FuzzyVariant v : FuzzyPinyinEngine.expandT9("9464")) {
+            if (v.value.equals("946") && v.matchesTargetUnits("yin", 0)) {
+                match = v;
+                break;
+            }
+        }
+        assertTrue(match != null);
+        assertEquals("ying", match.restoreUnits("yin"));
+    }
+
+    @Test
+    public void t9SharedDigitQueryDoesNotRestoreTheWrongReading() {
+        boolean foundXing = false;
+        for (FuzzyVariant v : FuzzyPinyinEngine.expandT9("9464")) {
+            if (v.value.equals("946") && v.matchesTargetUnits("xin", 0)) {
+                foundXing = true;
+                assertEquals("xing", v.restoreUnits("xin"));
+                assertEquals("yin", v.restoreUnits("yin"));
+            }
+        }
+        assertTrue(foundXing);
+    }
+
+    @Test
+    public void t9VariantRestoresUnitsAfterFixedLetterPrefix() {
+        FuzzyVariant match = null;
+        for (FuzzyVariant v : FuzzyPinyinEngine.expandT9("9464")) {
+            if (v.value.equals("946") && v.matchesTargetUnits("shi'yin'wei", 3)) {
+                match = v;
+                break;
+            }
+        }
+        assertTrue(match != null);
+        assertEquals("shi'ying'wei", match.restoreUnits("shi'yin'wei", 3));
+    }
+
+    @Test
     public void doesNotExpandAcrossExplicitT9SyllableBoundary() {
         assertFalse(values(FuzzyPinyinEngine.expandT9("4364'426")).isEmpty());
     }
