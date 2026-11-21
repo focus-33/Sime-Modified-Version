@@ -383,8 +383,25 @@ public final class TunedDecoder implements Decoder {
                     remainder.add(r);
                 }
             }
+            // A fuzzy alternative can be buried behind many exact T9
+            // readings of the same first-word span. Keep the two strongest
+            // exact readings first, then surface fuzzy readings, while
+            // preserving the relative score order within each partition.
+            List<DecodeResult> exactFirstWords = new ArrayList<>();
+            List<DecodeResult> fuzzyFirstWords = new ArrayList<>();
+            for (DecodeResult r : firstWordGroup) {
+                if (r.fuzzyMatchCount > 0) fuzzyFirstWords.add(r);
+                else exactFirstWords.add(r);
+            }
             out = new ArrayList<>(lead);
-            out.addAll(firstWordGroup);
+            if (fuzzyFirstWords.isEmpty()) {
+                out.addAll(firstWordGroup);
+            } else {
+                int exactAhead = Math.min(2, exactFirstWords.size());
+                out.addAll(exactFirstWords.subList(0, exactAhead));
+                out.addAll(fuzzyFirstWords);
+                out.addAll(exactFirstWords.subList(exactAhead, exactFirstWords.size()));
+            }
             out.addAll(remainder);
         }
         return out;

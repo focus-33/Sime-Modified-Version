@@ -47,6 +47,7 @@ public final class FuzzyPinyinDecoder implements Decoder {
         // T9 syllables already selected in the letter strip: transform only
         // that explicit prefix, leaving the still-ambiguous digit suffix intact.
         int queries = 0;
+        int startUnitsLength = start.replace("'", "").length();
         for (FuzzyVariant v : FuzzyPinyinEngine.expandPinyin(start)) {
             if (queries++ >= MAX_T9_QUERIES) break;
             DecodeResult[] found = safe(base.decodeNumSentence(v.value, nums, limit));
@@ -55,10 +56,18 @@ public final class FuzzyPinyinDecoder implements Decoder {
 
         // Unselected T9 digits: syllable boundaries are inferred only when the
         // complete digit chunk can be segmented into legal pinyin syllables.
+        Map<String, DecodeResult[]> t9QueryCache = new HashMap<>();
+        int prefixUnitsLength = startUnitsLength;
         for (FuzzyVariant v : FuzzyPinyinEngine.expandT9(nums)) {
-            if (queries++ >= MAX_T9_QUERIES) break;
-            DecodeResult[] found = safe(base.decodeNumSentence(start, v.value, limit));
-            collectMappedDigits(found, v, start.length(), exactKeys, best, origins);
+            DecodeResult[] found = t9QueryCache.get(v.value);
+            if (found == null) {
+                if (queries >= MAX_T9_QUERIES) break;
+                found = safe(base.decodeNumSentence(start, v.value, limit));
+                t9QueryCache.put(v.value, found);
+                queries++;
+            }
+            collectMappedDigits(found, v, start.length(), prefixUnitsLength,
+                    exactKeys, best, origins);
         }
 
         fuzzy.addAll(best.values());
@@ -84,7 +93,7 @@ public final class FuzzyPinyinDecoder implements Decoder {
             DecodeResult[] found = safe(query.decode(variant));
             for (DecodeResult r : found) {
                 int mapped = variant.mapConsumed(consumedReader.get(r));
-                addFuzzy(r, mapped, variant, 0, true, exactKeys, best, origins);
+                addFuzzy(r, mapped, variant, 0, 0, true, exactKeys, best, origins);
             }
         }
         List<DecodeResult> fuzzy = new ArrayList<>(best.values());
@@ -97,12 +106,13 @@ public final class FuzzyPinyinDecoder implements Decoder {
                                            Map<String, DecodeResult> best,
                                            Map<String, FuzzyOrigin> origins) {
         for (DecodeResult r : found) {
-            addFuzzy(r, variant.mapConsumed(r.consumed), variant, 0, true, exactKeys, best, origins);
+            addFuzzy(r, variant.mapConsumed(r.consumed), variant, 0, 0, true, exactKeys, best, origins);
         }
     }
 
     private static void collectMappedDigits(DecodeResult[] found, FuzzyVariant variant,
-                                            int prefixLength, Set<String> exactKeys,
+                                            int prefixLength, int prefixUnitsLength,
+                                            Set<String> exactKeys,
                                             Map<String, DecodeResult> best,
                                             Map<String, FuzzyOrigin> origins) {
         for (DecodeResult r : found) {
@@ -113,32 +123,46 @@ public final class FuzzyPinyinDecoder implements Decoder {
                 int mappedDigits = variant.mapConsumed(r.consumed - prefixLength);
                 mapped = mappedDigits < 0 ? -1 : prefixLength + mappedDigits;
             }
-            addFuzzy(r, mapped, variant, prefixLength, false, exactKeys, best, origins);
+            // T9 variants change digit lengths, but the native decoder
+            // returns pinyin-letter units. Restore the original syllable
+            // spelling there as well, offset past any fixed letter prefix.
+            addFuzzy(r, mapped, variant, prefixUnitsLength, prefixLength,
+                    true, exactKeys, best, origins);
         }
     }
 
     private static void addFuzzy(DecodeResult r, int mappedConsumed,
-                                 FuzzyVariant variant, int unitsOffset, boolean restoreUnits,
+                                 FuzzyVariant variant, int unitsOffset, int consumedOffset,
+                                 boolean restoreUnits,
                                  Set<String> exactKeys, Map<String, DecodeResult> best,
                                  Map<String, FuzzyOrigin> origins) {
         if (r == null || r.text == null || r.text.isEmpty() || mappedConsumed <= 0) return;
         String key = r.text + "\u0001" + mappedConsumed;
         if (exactKeys.contains(key)) return;
-        DecodeResult candidate = new DecodeResult(r.text, restoreUnits ? variant.restoreUnits(r.units, unitsOffset) : r.units, mappedConsumed,
+        if (restoreUnits && variant.coversChangedSyllable(mappedConsumed, consumedOffset)
+                && !variant.matchesTargetUnits(r.units, unitsOffset)) {
+            // A T9 query can be shared by distinct pinyin readings. Do not
+            // attach a result to the wrong fuzzy mapping merely because its
+            // digit query is identical.
+            return;
+        }
+        String candidateUnits = restoreUnits
+                ? variant.restoreUnits(r.units, unitsOffset) : r.units;
+        DecodeResult candidate = new DecodeResult(r.text, candidateUnits, mappedConsumed,
                 r.tokenIds, r.score - variant.penalty, 1, variant.penalty);
         DecodeResult old = best.get(key);
         if (old == null || candidate.score > old.score) {
             best.put(key, candidate);
-            origins.put(key, new FuzzyOrigin(variant, unitsOffset));
+            origins.put(key, new FuzzyOrigin(variant, consumedOffset));
         }
     }
 
     private static final class FuzzyOrigin {
         final FuzzyVariant variant;
-        final int offset;
-        FuzzyOrigin(FuzzyVariant variant, int offset) {
+        final int consumedOffset;
+        FuzzyOrigin(FuzzyVariant variant, int consumedOffset) {
             this.variant = variant;
-            this.offset = offset;
+            this.consumedOffset = consumedOffset;
         }
     }
 
@@ -155,7 +179,7 @@ public final class FuzzyPinyinDecoder implements Decoder {
             if (origin == null) continue;
             for (DecodeResult e : exact) {
                 if (e.text.equals(f.text) && e.consumed < f.consumed
-                        && origin.variant.consumesPartialSource(e.consumed, origin.offset)) {
+                        && origin.variant.consumesPartialSource(e.consumed, origin.consumedOffset)) {
                     replacements.put(e.text + "\u0001" + e.consumed, f);
                     used.add(f.text + "\u0001" + f.consumed);
                     break;

@@ -9,19 +9,25 @@ public final class FuzzyVariant {
     private final int sourceEnd;
     private final int targetEnd;
     private final String sourceSyllable;
+    private final String targetSyllable;
     private final int sourceStartUnits;
     private final int targetEndUnits;
 
     FuzzyVariant(String original, int sourceStart, int sourceEnd,
-                 String replacement, String ruleId, float penalty) {
+                 String replacement, String sourcePinyinSyllable,
+                 String targetPinyinSyllable, String ruleId, float penalty) {
         this.value = original.substring(0, sourceStart) + replacement
                 + original.substring(sourceEnd);
         this.sourceStart = sourceStart;
         this.sourceEnd = sourceEnd;
         this.targetEnd = sourceStart + replacement.length();
-        this.sourceSyllable = original.substring(sourceStart, sourceEnd);
+        // For T9 variants, original/replacement contain digits, but decoder
+        // units contain pinyin letters. Keep the pinyin spellings separately
+        // so restoring units never inserts T9 digits into the preedit.
+        this.sourceSyllable = sourcePinyinSyllable;
+        this.targetSyllable = targetPinyinSyllable;
         this.sourceStartUnits = original.substring(0, sourceStart).replace("\'", "").length();
-        this.targetEndUnits = sourceStartUnits + replacement.length();
+        this.targetEndUnits = sourceStartUnits + targetPinyinSyllable.length();
         this.ruleId = ruleId;
         this.penalty = penalty;
     }
@@ -36,6 +42,29 @@ public final class FuzzyVariant {
         return relative > sourceStart && relative < sourceEnd;
     }
 
+    boolean coversChangedSyllable(int mappedConsumed, int offset) {
+        return mappedConsumed >= sourceEnd + offset;
+    }
+
+    /** True when decoder units contain this variant's target syllable at its exact offset. */
+    boolean matchesTargetUnits(String units, int offset) {
+        if (units == null || units.isEmpty()) return false;
+        int wantedStart = sourceStartUnits + offset;
+        int flatIndex = 0;
+        int matched = 0;
+        for (int i = 0; i < units.length(); i++) {
+            char c = units.charAt(i);
+            if (c == '\'') continue;
+            if (flatIndex >= wantedStart && matched < targetSyllable.length()) {
+                if (c != targetSyllable.charAt(matched)) return false;
+                matched++;
+                if (matched == targetSyllable.length()) return true;
+            }
+            flatIndex++;
+        }
+        return false;
+    }
+
     /**
      * Restores the original spelling in a decoder's segmented units while
      * preserving apostrophe boundaries. The decoder may return units in the
@@ -47,7 +76,7 @@ public final class FuzzyVariant {
     }
 
     public String restoreUnits(String units, int offset) {
-        if (units == null || units.isEmpty()) return units;
+        if (units == null || units.isEmpty() || !matchesTargetUnits(units, offset)) return units;
         StringBuilder out = new StringBuilder(units.length() + 2);
         int flatIndex = 0;
         boolean restored = false;

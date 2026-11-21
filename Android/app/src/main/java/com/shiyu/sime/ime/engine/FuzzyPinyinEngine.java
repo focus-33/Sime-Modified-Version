@@ -86,9 +86,16 @@ public final class FuzzyPinyinEngine {
                     int end = i + from.length();
                     if (!prefix[i] || !suffix[end] || !chunk.startsWith(from, i)) continue;
                     FuzzyVariant variant = new FuzzyVariant(original,
-                            offset + i, offset + end, to, rule.id, rule.penalty);
+                            offset + i, offset + end, to, sourceSyllable,
+                            targetSyllable, rule.id, rule.penalty);
                     if (!variant.value.equals(original)) {
-                        out.putIfAbsent(variant.value, variant);
+                        // T9 digit strings can represent different pinyin
+                        // syllables (e.g. xing and ying). Keep distinct
+                        // source/target mappings even when their query digits
+                        // are identical; the decoded units identify the right one.
+                        String variantKey = variant.value + "\u0001" + (offset + i)
+                                + "\u0001" + sourceSyllable + "\u0001" + targetSyllable;
+                        out.putIfAbsent(variantKey, variant);
                         if (out.size() >= MAX_VARIANTS) return;
                     }
                 }
