@@ -355,19 +355,37 @@ public final class TunedDecoder implements Decoder {
         List<DecodeResult> out = new ArrayList<>(lead);
         out.addAll(rest);
 
-        // Put the first word of the best sentence right after the kept
-        // sentence(s): the longest shorter candidate the sentence starts with.
-        int insertAt = lead.size();
-        int best = -1;
-        for (int i = 0; i < out.size(); i++) {
-            DecodeResult r = out.get(i);
-            if (!isChinese(r) || r.consumed >= full) continue;
-            if (!top.text.startsWith(r.text)) continue;
-            if (best < 0 || r.text.length() > out.get(best).text.length()) best = i;
+        // Find the best sentence's first-word boundary from the longest
+        // candidate that is literally its prefix. Then promote the complete
+        // candidate group at that same pinyin boundary, not just literal
+        // prefixes. This is important for fuzzy alternatives such as
+        // 原因 (yuan'ying) beside 原型 (yuan'xing): both consume the same
+        // first two syllables even though their Hanzi differ.
+        int firstWordConsumed = -1;
+        int firstWordSyllables = -1;
+        int bestPrefixLength = -1;
+        for (DecodeResult r : out) {
+            if (!isChinese(r) || r.consumed >= full || !top.text.startsWith(r.text)) continue;
+            if (r.text.length() > bestPrefixLength) {
+                bestPrefixLength = r.text.length();
+                firstWordConsumed = r.consumed;
+                firstWordSyllables = r.units.split("'").length;
+            }
         }
-        if (best >= 0 && best != insertAt) {
-            DecodeResult first = out.remove(best);
-            out.add(Math.min(insertAt, out.size()), first);
+        if (firstWordConsumed > 0) {
+            List<DecodeResult> firstWordGroup = new ArrayList<>();
+            List<DecodeResult> remainder = new ArrayList<>(out.size());
+            for (DecodeResult r : out) {
+                if (isChinese(r) && r.consumed == firstWordConsumed
+                        && r.units.split("'").length == firstWordSyllables) {
+                    firstWordGroup.add(r);
+                } else if (!lead.contains(r)) {
+                    remainder.add(r);
+                }
+            }
+            out = new ArrayList<>(lead);
+            out.addAll(firstWordGroup);
+            out.addAll(remainder);
         }
         return out;
     }
