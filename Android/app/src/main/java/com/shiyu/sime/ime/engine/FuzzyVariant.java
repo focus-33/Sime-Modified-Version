@@ -32,6 +32,13 @@ public final class FuzzyVariant {
         this.penalty = penalty;
     }
 
+    /** Compact source/target description used by opt-in runtime diagnostics. */
+    String diagnosticInfo() {
+        return ruleId + " " + sourceSyllable + "->" + targetSyllable
+                + " sourceRange=" + sourceStart + ".." + sourceEnd
+                + " query=" + value;
+    }
+
     /** True when an exact result stops inside the original syllable being fuzzy-matched. */
     public boolean consumesPartialSource(int originalConsumed) {
         return consumesPartialSource(originalConsumed, 0);

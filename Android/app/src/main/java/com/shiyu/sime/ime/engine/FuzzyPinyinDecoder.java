@@ -1,5 +1,7 @@
 package com.shiyu.sime.ime.engine;
 
+import android.util.Log;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,6 +39,10 @@ public final class FuzzyPinyinDecoder implements Decoder {
         String start = startLetters == null ? "" : startLetters;
         String nums = digits == null ? "" : digits;
         DecodeResult[] exact = safe(base.decodeNumSentence(start, nums, limit));
+        final boolean diagnostic = nums.length() >= 30;
+        if (diagnostic) {
+            logQuery("EXACT", start, nums, exact);
+        }
         if (start.isEmpty() && nums.isEmpty()) return exact;
 
         List<DecodeResult> fuzzy = new ArrayList<>();
@@ -48,9 +54,17 @@ public final class FuzzyPinyinDecoder implements Decoder {
         // that explicit prefix, leaving the still-ambiguous digit suffix intact.
         int queries = 0;
         int startUnitsLength = start.replace("'", "").length();
-        for (FuzzyVariant v : FuzzyPinyinEngine.expandPinyin(start)) {
-            if (queries++ >= MAX_T9_QUERIES) break;
+        List<FuzzyVariant> startVariants = FuzzyPinyinEngine.expandPinyin(start);
+        if (diagnostic && !startVariants.isEmpty()) {
+            Log.d("SIME_FUZZY_QUERY", "START_VARIANTS count=" + startVariants.size());
+        }
+        for (FuzzyVariant v : startVariants) {
+            if (queries++ >= MAX_T9_QUERIES) {
+                if (diagnostic) Log.d("SIME_FUZZY_QUERY", "START_VARIANT_SKIPPED " + v.diagnosticInfo());
+                break;
+            }
             DecodeResult[] found = safe(base.decodeNumSentence(v.value, nums, limit));
+            if (diagnostic) logQuery("START_FUZZY " + v.diagnosticInfo(), v.value, nums, found);
             collectMappedStart(found, v, exactKeys, best, origins);
         }
 
@@ -58,13 +72,24 @@ public final class FuzzyPinyinDecoder implements Decoder {
         // complete digit chunk can be segmented into legal pinyin syllables.
         Map<String, DecodeResult[]> t9QueryCache = new HashMap<>();
         int prefixUnitsLength = startUnitsLength;
-        for (FuzzyVariant v : FuzzyPinyinEngine.expandT9(nums)) {
+        List<FuzzyVariant> t9Variants = FuzzyPinyinEngine.expandT9(nums);
+        if (diagnostic) {
+            Log.d("SIME_FUZZY_QUERY", "T9_VARIANTS count=" + t9Variants.size()
+                    + " remainingQueryBudget=" + Math.max(0, MAX_T9_QUERIES - queries));
+        }
+        for (FuzzyVariant v : t9Variants) {
             DecodeResult[] found = t9QueryCache.get(v.value);
             if (found == null) {
-                if (queries >= MAX_T9_QUERIES) break;
+                if (queries >= MAX_T9_QUERIES) {
+                    if (diagnostic) Log.d("SIME_FUZZY_QUERY", "T9_VARIANT_SKIPPED " + v.diagnosticInfo());
+                    break;
+                }
                 found = safe(base.decodeNumSentence(start, v.value, limit));
                 t9QueryCache.put(v.value, found);
                 queries++;
+                if (diagnostic) logQuery("T9_FUZZY " + v.diagnosticInfo(), start, v.value, found);
+            } else if (diagnostic) {
+                Log.d("SIME_FUZZY_QUERY", "T9_QUERY_REUSED " + v.diagnosticInfo());
             }
             collectMappedDigits(found, v, start.length(), prefixUnitsLength,
                     exactKeys, best, origins);
@@ -72,7 +97,13 @@ public final class FuzzyPinyinDecoder implements Decoder {
 
         fuzzy.addAll(best.values());
         fuzzy.sort((a, b) -> Float.compare(b.score, a.score));
-        return mergeExactAndFuzzy(exact, fuzzy, origins);
+        DecodeResult[] merged = mergeExactAndFuzzy(exact, fuzzy, origins);
+        if (diagnostic) {
+            Log.d("SIME_FUZZY_QUERY", "MERGED fuzzyUnique=" + fuzzy.size()
+                    + " finalCount=" + merged.length + " causeIndex=" + indexOf(merged, "原因")
+                    + " cause=" + describeCause(merged));
+        }
+        return merged;
     }
 
     private interface VariantQuery {
@@ -200,6 +231,39 @@ public final class FuzzyPinyinDecoder implements Decoder {
             }
         }
         return out.toArray(new DecodeResult[0]);
+    }
+
+    /** Diagnostic-only trace for long T9 inputs; does not affect decoding. */
+    private static void logQuery(String stage, String start, String digits, DecodeResult[] results) {
+        StringBuilder line = new StringBuilder(256);
+        line.append(stage).append(" start=").append(start)
+                .append(" digits=").append(digits)
+                .append(" count=").append(results.length)
+                .append(" causeIndex=").append(indexOf(results, "原因"));
+        int shown = Math.min(results.length, 12);
+        for (int i = 0; i < shown; i++) {
+            DecodeResult r = results[i];
+            if (r == null) continue;
+            line.append(" | ").append(i).append(':').append(r.text)
+                    .append('/').append(r.units).append('/').append(r.consumed);
+        }
+        Log.d("SIME_FUZZY_QUERY", line.toString());
+    }
+
+    private static int indexOf(DecodeResult[] results, String text) {
+        for (int i = 0; i < results.length; i++) {
+            DecodeResult r = results[i];
+            if (r != null && text.equals(r.text)) return i;
+        }
+        return -1;
+    }
+
+    private static String describeCause(DecodeResult[] results) {
+        int index = indexOf(results, "原因");
+        if (index < 0) return "absent";
+        DecodeResult r = results[index];
+        return "index=" + index + ",units=" + r.units + ",consumed=" + r.consumed
+                + ",fuzzy=" + r.fuzzyMatchCount + ",penalty=" + r.fuzzyPenalty;
     }
 
     private static Set<String> keys(DecodeResult[] results) {
