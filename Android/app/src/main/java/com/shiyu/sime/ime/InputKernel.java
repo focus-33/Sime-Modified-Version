@@ -1,6 +1,7 @@
 package com.shiyu.sime.ime;
 
 import com.shiyu.sime.ime.engine.DecodeResult;
+import com.shiyu.sime.ime.engine.LearnedSentenceStore;
 import com.shiyu.sime.ime.data.QuickPhraseStore;
 import com.shiyu.sime.ime.engine.Decoder;
 import com.shiyu.sime.ime.PinyinUtil;
@@ -10,7 +11,6 @@ import com.shiyu.sime.ime.keyboard.SimeKey;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
-import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -417,6 +417,7 @@ public class InputKernel {
     public enum CandidateAction { MOVE_UP, MOVE_DOWN, BLOCK, MOVE_FIRST, MOVE_LAST }
 
     private com.shiyu.sime.ime.engine.CandidateTuning tuning;
+    private LearnedSentenceStore learnedSentenceStore;
 
     // ===== Coalescing of rapid typing =====
     /**
@@ -450,6 +451,11 @@ public class InputKernel {
     /** Rules store used by the long-press menu (null disables the menu). */
     public void setTuning(com.shiyu.sime.ime.engine.CandidateTuning t) {
         engineRunner.post(() -> this.tuning = t);
+    }
+
+    /** Install the persistent store for complete sentences selected by the user. */
+    public void setLearnedSentenceStore(LearnedSentenceStore store) {
+        engineRunner.post(() -> this.learnedSentenceStore = store);
     }
 
     /** Whether the candidate at the current strip can be reordered. */
@@ -822,6 +828,7 @@ public class InputKernel {
         state.select(tradTextOf(c), c.units, c.consumed);
         if (state.fullySelected()) {
             String out = state.committedText();
+            learnCompletedSentence(out);
             fireCommitText(out);
             if (!privateField) {
                 decoder.learnUserSentence(state.contextIdsArray(), c.tokenIds);
@@ -907,6 +914,7 @@ public class InputKernel {
         selectionTokenIds.add(c.tokenIds);
         if (state.fullySelected()) {
             String out = state.committedText();
+            learnCompletedSentence(out);
             fireCommitText(out);
             previousCommitEndsWithAsciiWord = endsWithAsciiWord(out);
             // Learn each selection in turn so the engine's per-call
@@ -1068,14 +1076,6 @@ public class InputKernel {
             startStripped++;
         }
 
-        boolean simeDiag = chineseLayout == ChineseLayout.T9
-                && state.buffer.length() >= 30;
-        if (simeDiag) {
-            Log.d("SIME_DIAG_INPUT", "buffer=" + state.buffer
-                    + " lettersEnd=" + state.lettersEnd
-                    + " selected=" + sel + " start=[" + start + "] digits=[" + digits + "]");
-        }
-
         DecodeResult[] raw;
         if (chineseLayout == ChineseLayout.T9 && !digits.isEmpty()) {
             raw = decoder.decodeNumSentence(start, digits, EXTRA_SENTENCES);
@@ -1085,28 +1085,12 @@ public class InputKernel {
             raw = new DecodeResult[0];
         }
 
-        if (simeDiag) {
-            int causeIndex = -1;
-            StringBuilder sample = new StringBuilder();
-            for (int i = 0; i < raw.length; i++) {
-                DecodeResult r = raw[i];
-                if ("原因".equals(r.text)) causeIndex = i;
-                if (i < 18) {
-                    if (sample.length() > 0) sample.append(" | ");
-                    sample.append(i).append(':').append(r.text).append('/').append(r.units)
-                            .append('/').append(r.consumed).append("/f").append(r.fuzzyMatchCount);
-                }
-            }
-            Log.d("SIME_DIAG_RAW", "count=" + raw.length + " causeIndex=" + causeIndex
-                    + " first=" + sample);
-        }
-
         List<DecodeResult> out = new ArrayList<>(raw.length + 4);
         java.util.HashSet<String> seenKeys = new java.util.HashSet<>();
         DecodeResult topCandidate = null;
 
-        // Personal-dictionary matches are prepended, giving explicitly
-        // defined words the high-frequency position expected from Gboard.
+        // Learned complete sentences and personal-dictionary matches are
+        // prepended so the user's own confirmed choices take priority.
         String typedLetters = state.buffer.substring(
                 Math.min(sel, state.lettersEnd), state.lettersEnd).replace("'", "");
         String typedDigits = state.buffer.substring(
@@ -1116,6 +1100,20 @@ public class InputKernel {
                 : typedLetters + typedDigits;
         if (!typedCode.isEmpty()) {
             int consumedInput = state.buffer.length() - sel;
+            if (!privateField && learnedSentenceStore != null) {
+                String layoutId = learnedLayoutId();
+                for (LearnedSentenceStore.Entry entry :
+                        learnedSentenceStore.find(layoutId, typedCode.toLowerCase())) {
+                    if (tuning != null && tuning.isBlocked(entry.text)) continue;
+                    DecodeResult learned = new DecodeResult(
+                            entry.text, entry.pinyin, consumedInput);
+                    String learnedKey = learned.text + "\u0001" + learned.consumed;
+                    if (seenKeys.add(learnedKey)) {
+                        out.add(learned);
+                        if (topCandidate == null) topCandidate = learned;
+                    }
+                }
+            }
             for (QuickPhraseStore.Entry entry : personalDictionary) {
                 // Entries store pinyin letters. On the nine-key the typed
                 // code is digits, so compare against the entry's key
@@ -1145,22 +1143,9 @@ public class InputKernel {
             out.add(c);
             if (topCandidate == null) topCandidate = c;
         }
+        if (tuning != null) out = new ArrayList<>(tuning.apply(out));
+        topCandidate = out.isEmpty() ? null : out.get(0);
         candidates = out;
-        if (simeDiag) {
-            int causeIndex = -1;
-            StringBuilder sample = new StringBuilder();
-            for (int i = 0; i < candidates.size(); i++) {
-                DecodeResult r = candidates.get(i);
-                if ("原因".equals(r.text)) causeIndex = i;
-                if (i < 18) {
-                    if (sample.length() > 0) sample.append(" | ");
-                    sample.append(i).append(':').append(r.text).append('/').append(r.units)
-                            .append('/').append(r.consumed).append("/f").append(r.fuzzyMatchCount);
-                }
-            }
-            Log.d("SIME_DIAG_KERNEL", "count=" + candidates.size()
-                    + " causeIndex=" + causeIndex + " first=" + sample);
-        }
 
         String topU = topCandidate != null ? topCandidate.units : "";
         if (!topU.isEmpty()) {
@@ -1366,6 +1351,22 @@ public class InputKernel {
         state.predicting = false;
         candidates = Collections.emptyList();
         topUnits = "";
+    }
+
+    /** Include the output script in the key so traditional text is not replayed in simplified mode. */
+    private String learnedLayoutId() {
+        String layoutId = chineseLayout == ChineseLayout.T9 ? "T9" : "QWERTY";
+        return layoutId + (traditionalEnabled ? "_TRAD" : "_SIMPLIFIED");
+    }
+
+    /** Save the exact input code and chosen pinyin for a fully selected sentence. */
+    private void learnCompletedSentence(String text) {
+        if (privateField || learnedSentenceStore == null || state.selections.isEmpty()) return;
+        String code = LearnedSentenceStore.originalInputCode(state);
+        String pinyin = LearnedSentenceStore.selectedPinyin(state);
+        if (code.isEmpty() || pinyin.length() == 0 || text == null || text.isEmpty()) return;
+        String layoutId = learnedLayoutId();
+        learnedSentenceStore.learn(layoutId, code, pinyin, text);
     }
 
     /**

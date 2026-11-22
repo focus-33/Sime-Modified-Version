@@ -6,11 +6,13 @@ import static org.junit.Assert.assertTrue;
 
 import com.shiyu.sime.ime.engine.DecodeResult;
 import com.shiyu.sime.ime.engine.Decoder;
+import com.shiyu.sime.ime.engine.LearnedSentenceStore;
 import com.shiyu.sime.ime.keyboard.SimeKey;
 
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -170,6 +172,34 @@ public class InputKernelTest {
         assertEquals(Arrays.asList("你好"), listener.committed);
         assertEquals("", state().buffer);
         assertTrue(state().selections.isEmpty());
+    }
+
+    @Test
+    public void remembersACompletedSentenceForTheNextIdenticalInput() throws Exception {
+        File file = File.createTempFile("sime-learned", ".txt");
+        // Start with an empty learning file.
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
+        LearnedSentenceStore store = new LearnedSentenceStore(file);
+        kernel.setLearnedSentenceStore(store);
+        decoder.putSentence("nihao", r("你好", "ni'hao", 5));
+
+        for (char c : "nihao".toCharArray()) kernel.onKey(SimeKey.letter(c));
+        kernel.onCandidatePick(0);
+        assertEquals(1, store.find("QWERTY_SIMPLIFIED", "nihao").size());
+
+        // Simulate a decoder result that no longer contains the sentence:
+        // the persistent learned entry alone must restore it at the top.
+        decoder.sentenceMap.clear();
+        for (char c : "nihao".toCharArray()) kernel.onKey(SimeKey.letter(c));
+        assertFalse(candidates().isEmpty());
+        assertEquals("你好", candidates().get(0).text);
+        assertEquals("ni'hao", candidates().get(0).units);
+
+        kernel.onCandidatePick(0);
+        assertEquals(2, store.find("QWERTY_SIMPLIFIED", "nihao").get(0).uses);
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
     }
 
     @Test

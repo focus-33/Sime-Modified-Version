@@ -18,6 +18,7 @@ import com.shiyu.sime.ime.data.ClipboardWatcher;
 import com.shiyu.sime.ime.data.TraditionalConverter;
 import com.shiyu.sime.ime.engine.CandidateTuning;
 import com.shiyu.sime.ime.engine.FuzzyPinyinDecoder;
+import com.shiyu.sime.ime.engine.LearnedSentenceStore;
 import com.shiyu.sime.ime.engine.SimeEngineDecoder;
 import com.shiyu.sime.ime.engine.TunedDecoder;
 import com.shiyu.sime.ime.prefs.SimePrefs;
@@ -65,6 +66,8 @@ public class SimeService extends InputMethodService
         kernel = new InputKernel(new TunedDecoder(
                 new FuzzyPinyinDecoder(new SimeEngineDecoder(engine)), tuning));
         kernel.setTuning(tuning);
+        kernel.setLearnedSentenceStore(
+                new LearnedSentenceStore(new File(rankDir, "learned_sentences.txt")));
         engine.setOnReadyListener(kernel::onEngineReady);
         kernel.setPersonalDictionary(
                 new com.shiyu.sime.ime.data.QuickPhraseStore(this).getEntries());
