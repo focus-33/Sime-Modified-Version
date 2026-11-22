@@ -115,6 +115,22 @@ public class PickerPanelView extends KeyboardView {
         actionBtn.setBackground(makeCircleBg(
                 theme.functionKeyBackground, theme.functionKeyBackgroundPressed));
         if (activeTab == Tab.QUICK_PHRASE) {
+            // Export is a separate text action so the existing + add-entry
+            // control keeps its original behavior and hit target.
+            TextView exportBtn = new TextView(getContext());
+            exportBtn.setText("导出自学习文件");
+            exportBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, Typography.CAPTION);
+            exportBtn.setTextColor(theme.accentColor);
+            exportBtn.setGravity(Gravity.CENTER);
+            exportBtn.setPadding(dp(8), 0, dp(8), 0);
+            exportBtn.setClickable(true);
+            exportBtn.setFocusable(true);
+            InputFeedbacks.wireClick(exportBtn, () -> {
+                Intent intent = new Intent(getContext(), com.shiyu.sime.ExportLearningActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+            });
+            header.addView(exportBtn);
             actionBtn.setText("+");
             actionBtn.setTextSize(TypedValue.COMPLEX_UNIT_SP, Typography.DISPLAY);
             actionBtn.setTextColor(theme.keyText);

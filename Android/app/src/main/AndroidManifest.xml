@@ -40,6 +40,12 @@
             android:label="个人字典"
             android:exported="false" />
 
+        <!-- Creates a user-editable TXT backup of the two learning stores. -->
+        <activity
+            android:name=".ExportLearningActivity"
+            android:label="导出自学习文件"
+            android:exported="false" />
+
     </application>
 
 </manifest>
