@@ -10,6 +10,7 @@ import com.shiyu.sime.ime.keyboard.SimeKey;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -1067,6 +1068,14 @@ public class InputKernel {
             startStripped++;
         }
 
+        boolean simeDiag = chineseLayout == ChineseLayout.T9
+                && state.buffer.length() >= 30;
+        if (simeDiag) {
+            Log.d("SIME_DIAG_INPUT", "buffer=" + state.buffer
+                    + " lettersEnd=" + state.lettersEnd
+                    + " selected=" + sel + " start=[" + start + "] digits=[" + digits + "]");
+        }
+
         DecodeResult[] raw;
         if (chineseLayout == ChineseLayout.T9 && !digits.isEmpty()) {
             raw = decoder.decodeNumSentence(start, digits, EXTRA_SENTENCES);
@@ -1074,6 +1083,22 @@ public class InputKernel {
             raw = decoder.decodeSentence(start, EXTRA_SENTENCES);
         } else {
             raw = new DecodeResult[0];
+        }
+
+        if (simeDiag) {
+            int causeIndex = -1;
+            StringBuilder sample = new StringBuilder();
+            for (int i = 0; i < raw.length; i++) {
+                DecodeResult r = raw[i];
+                if ("原因".equals(r.text)) causeIndex = i;
+                if (i < 18) {
+                    if (sample.length() > 0) sample.append(" | ");
+                    sample.append(i).append(':').append(r.text).append('/').append(r.units)
+                            .append('/').append(r.consumed).append("/f").append(r.fuzzyMatchCount);
+                }
+            }
+            Log.d("SIME_DIAG_RAW", "count=" + raw.length + " causeIndex=" + causeIndex
+                    + " first=" + sample);
         }
 
         List<DecodeResult> out = new ArrayList<>(raw.length + 4);
@@ -1121,6 +1146,21 @@ public class InputKernel {
             if (topCandidate == null) topCandidate = c;
         }
         candidates = out;
+        if (simeDiag) {
+            int causeIndex = -1;
+            StringBuilder sample = new StringBuilder();
+            for (int i = 0; i < candidates.size(); i++) {
+                DecodeResult r = candidates.get(i);
+                if ("原因".equals(r.text)) causeIndex = i;
+                if (i < 18) {
+                    if (sample.length() > 0) sample.append(" | ");
+                    sample.append(i).append(':').append(r.text).append('/').append(r.units)
+                            .append('/').append(r.consumed).append("/f").append(r.fuzzyMatchCount);
+                }
+            }
+            Log.d("SIME_DIAG_KERNEL", "count=" + candidates.size()
+                    + " causeIndex=" + causeIndex + " first=" + sample);
+        }
 
         String topU = topCandidate != null ? topCandidate.units : "";
         if (!topU.isEmpty()) {
