@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -74,7 +75,13 @@ public final class FuzzyPinyinEngine {
             }
         }
 
+        // Collect variants separately for each fuzzy rule first. The previous
+        // rule-first traversal could let en/eng consume all eight slots before
+        // in/ing was considered, making results depend on rule declaration
+        // order rather than giving each enabled fuzzy pair a fair chance.
+        List<LinkedHashMap<String, FuzzyVariant>> byRule = new ArrayList<>();
         for (FuzzyPinyinRules.Rule rule : FuzzyPinyinRules.all()) {
+            LinkedHashMap<String, FuzzyVariant> ruleVariants = new LinkedHashMap<>();
             for (String sourceSyllable : PinyinSyllables.allSyllables()) {
                 if (!sourceSyllable.endsWith(rule.from)) continue;
                 String targetSyllable = sourceSyllable.substring(
@@ -95,12 +102,31 @@ public final class FuzzyPinyinEngine {
                         // are identical; the decoded units identify the right one.
                         String variantKey = variant.value + "\u0001" + (offset + i)
                                 + "\u0001" + sourceSyllable + "\u0001" + targetSyllable;
-                        out.putIfAbsent(variantKey, variant);
-                        if (out.size() >= MAX_VARIANTS) return;
+                        ruleVariants.putIfAbsent(variantKey, variant);
                     }
                 }
             }
+            byRule.add(ruleVariants);
         }
+
+        // Round-robin across rule families. MAX_VARIANTS remains unchanged,
+        // so the native decoder query budget and worst-case work do not grow.
+        int round = 0;
+        boolean added;
+        do {
+            added = false;
+            for (LinkedHashMap<String, FuzzyVariant> ruleVariants : byRule) {
+                if (out.size() >= MAX_VARIANTS) return;
+                if (round >= ruleVariants.size()) continue;
+                Map.Entry<String, FuzzyVariant> entry =
+                        new ArrayList<>(ruleVariants.entrySet()).get(round);
+                if (!out.containsKey(entry.getKey())) {
+                    out.put(entry.getKey(), entry.getValue());
+                    added = true;
+                }
+            }
+            round++;
+        } while (added && out.size() < MAX_VARIANTS);
     }
 
     private static String key(String syllable, boolean t9) {
