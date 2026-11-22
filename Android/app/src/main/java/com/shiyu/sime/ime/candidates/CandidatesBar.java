@@ -7,6 +7,7 @@ import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.style.BackgroundColorSpan;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -390,6 +391,25 @@ public class CandidatesBar extends FrameLayout {
         List<DecodeResult> candidates = snap.candidates;
         boolean stateActive = (state != null) && !state.isEmpty();
         boolean hasCandidates = (candidates != null) && !candidates.isEmpty();
+        if (state != null && state.buffer.length() >= 30
+                && snap.mode == KeyboardMode.CHINESE) {
+            int causeIndex = -1;
+            StringBuilder sample = new StringBuilder();
+            if (candidates != null) {
+                for (int i = 0; i < candidates.size(); i++) {
+                    DecodeResult r = candidates.get(i);
+                    if ("原因".equals(r.text)) causeIndex = i;
+                    if (i < 18) {
+                        if (sample.length() > 0) sample.append(" | ");
+                        sample.append(i).append(':').append(r.text);
+                    }
+                }
+            }
+            Log.d("SIME_DIAG_BAR", "buffer=" + state.buffer
+                    + " count=" + (candidates == null ? 0 : candidates.size())
+                    + " stripLimit=" + MAX_STRIP_CANDIDATES
+                    + " causeIndex=" + causeIndex + " first=" + sample);
+        }
         boolean hasEnglishInput = !snap.englishBuffer.isEmpty();
         boolean englishMode = snap.mode == KeyboardMode.ENGLISH;
         // Keep the right-edge button visible while composing T9 pinyin.
