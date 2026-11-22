@@ -17,6 +17,7 @@ import com.shiyu.sime.ime.KeyboardMode;
 import com.shiyu.sime.ime.data.ClipboardWatcher;
 import com.shiyu.sime.ime.data.TraditionalConverter;
 import com.shiyu.sime.ime.engine.CandidateTuning;
+import com.shiyu.sime.ime.engine.ContextualSelectionMemory;
 import com.shiyu.sime.ime.engine.FuzzyPinyinDecoder;
 import com.shiyu.sime.ime.engine.LearnedSentenceStore;
 import com.shiyu.sime.ime.engine.SimeEngineDecoder;
@@ -68,6 +69,8 @@ public class SimeService extends InputMethodService
         kernel.setTuning(tuning);
         kernel.setLearnedSentenceStore(
                 new LearnedSentenceStore(new File(rankDir, "learned_sentences.txt")));
+        kernel.setContextualSelectionMemory(new ContextualSelectionMemory(
+                new File(rankDir, "contextual_selection_memory.txt")));
         engine.setOnReadyListener(kernel::onEngineReady);
         kernel.setPersonalDictionary(
                 new com.shiyu.sime.ime.data.QuickPhraseStore(this).getEntries());

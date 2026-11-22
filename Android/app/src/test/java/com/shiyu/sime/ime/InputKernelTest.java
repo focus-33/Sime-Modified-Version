@@ -5,6 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.shiyu.sime.ime.engine.DecodeResult;
+import com.shiyu.sime.ime.engine.ContextualSelectionMemory;
 import com.shiyu.sime.ime.engine.Decoder;
 import com.shiyu.sime.ime.engine.LearnedSentenceStore;
 import com.shiyu.sime.ime.keyboard.SimeKey;
@@ -200,6 +201,69 @@ public class InputKernelTest {
         assertEquals(2, store.find("QWERTY_SIMPLIFIED", "nihao").get(0).uses);
         //noinspection ResultOfMethodCallIgnored
         file.delete();
+    }
+
+    @Test
+    public void recordsManualWordChoicesWithTheirSurroundingSelectedTokens() throws Exception {
+        File file = File.createTempFile("sime-context", ".txt");
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
+        ContextualSelectionMemory memory = new ContextualSelectionMemory(file);
+        kernel.setContextualSelectionMemory(memory);
+
+        decoder.putSentence("nihao",
+                new DecodeResult("你", "ni", 2, new int[] {11}, 0.0f),
+                new DecodeResult("你好", "ni'hao", 5, new int[] {11, 22}, 0.0f));
+        decoder.putSentence("hao",
+                new DecodeResult("好", "hao", 3, new int[] {22}, 0.0f));
+
+        for (char c : "nihao".toCharArray()) kernel.onKey(SimeKey.letter(c));
+        kernel.onCandidatePick(0); // manually select 你; composition remains open
+        assertTrue("choices are not learned before the text is committed", memory.entries().isEmpty());
+        kernel.onCandidatePick(0); // manually select 好; now the sentence commits
+
+        assertEquals(2, memory.entries().size());
+        ContextualSelectionMemory.Entry first = memory.entries().get(0);
+        assertEquals("ni", first.pinyin);
+        assertEquals("你", first.text);
+        assertTrue(Arrays.equals(new int[] {22}, first.rightContext));
+        ContextualSelectionMemory.Entry second = memory.entries().get(1);
+        assertEquals("hao", second.pinyin);
+        assertEquals("好", second.text);
+        assertTrue(Arrays.equals(new int[] {11}, second.leftContext));
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
+    }
+
+    @Test
+    public void contextualLearningCannotDisplaceAnExactRememberedSentence() throws Exception {
+        File sentenceFile = File.createTempFile("sime-sentence", ".txt");
+        //noinspection ResultOfMethodCallIgnored
+        sentenceFile.delete();
+        LearnedSentenceStore sentenceStore = new LearnedSentenceStore(sentenceFile);
+        sentenceStore.learn("QWERTY_SIMPLIFIED", "nihao", "ni'hao", "你好");
+        kernel.setLearnedSentenceStore(sentenceStore);
+
+        File contextFile = File.createTempFile("sime-context", ".txt");
+        //noinspection ResultOfMethodCallIgnored
+        contextFile.delete();
+        ContextualSelectionMemory memory = new ContextualSelectionMemory(contextFile);
+        memory.learn("nihao", "你", new int[0]);
+        memory.learn("nihao", "你", new int[0]);
+        memory.learn("nihao", "你", new int[0]);
+        kernel.setContextualSelectionMemory(memory);
+
+        // Deliberately give the competing decoder candidate a higher raw score.
+        decoder.putSentence("nihao",
+                new DecodeResult("你", "nihao", 5, new int[] {11}, 2.0f));
+        for (char c : "nihao".toCharArray()) kernel.onKey(SimeKey.letter(c));
+
+        assertFalse(candidates().isEmpty());
+        assertEquals("你好", candidates().get(0).text);
+        //noinspection ResultOfMethodCallIgnored
+        sentenceFile.delete();
+        //noinspection ResultOfMethodCallIgnored
+        contextFile.delete();
     }
 
     @Test

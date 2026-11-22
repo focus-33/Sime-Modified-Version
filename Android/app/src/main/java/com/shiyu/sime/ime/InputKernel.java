@@ -2,6 +2,7 @@ package com.shiyu.sime.ime;
 
 import com.shiyu.sime.ime.engine.DecodeResult;
 import com.shiyu.sime.ime.engine.LearnedSentenceStore;
+import com.shiyu.sime.ime.engine.ContextualSelectionMemory;
 import com.shiyu.sime.ime.data.QuickPhraseStore;
 import com.shiyu.sime.ime.engine.Decoder;
 import com.shiyu.sime.ime.PinyinUtil;
@@ -369,6 +370,7 @@ public class InputKernel {
                 String tail = !candidates.isEmpty()
                         ? tradTextOf(candidates.get(0))
                         : state.remaining();
+                flushPendingContextChoices();
                 fireCommitText(committed + tail);
                 resetInput();
             }
@@ -418,6 +420,22 @@ public class InputKernel {
 
     private com.shiyu.sime.ime.engine.CandidateTuning tuning;
     private LearnedSentenceStore learnedSentenceStore;
+    private ContextualSelectionMemory contextualSelectionMemory;
+
+    /** A manually chosen segment held until its text is actually committed. */
+    private static final class PendingContextChoice {
+        final String pinyin;
+        final String text;
+        final int[] context;
+        final int[] tokenIds;
+        PendingContextChoice(String pinyin, String text, int[] context, int[] tokenIds) {
+            this.pinyin = pinyin;
+            this.text = text;
+            this.context = context;
+            this.tokenIds = tokenIds == null ? new int[0] : tokenIds.clone();
+        }
+    }
+    private final List<PendingContextChoice> pendingContextChoices = new ArrayList<>();
 
     // ===== Coalescing of rapid typing =====
     /**
@@ -456,6 +474,11 @@ public class InputKernel {
     /** Install the persistent store for complete sentences selected by the user. */
     public void setLearnedSentenceStore(LearnedSentenceStore store) {
         engineRunner.post(() -> this.learnedSentenceStore = store);
+    }
+
+    /** Install the independent memory for manually selected words and context. */
+    public void setContextualSelectionMemory(ContextualSelectionMemory memory) {
+        engineRunner.post(() -> this.contextualSelectionMemory = memory);
     }
 
     /** Whether the candidate at the current strip can be reordered. */
@@ -716,6 +739,7 @@ public class InputKernel {
             tail = state.remaining();
         }
         String out = state.committedText() + tail;
+        flushPendingContextChoices();
         fireCommitText(out);
         resetAll();
     }
@@ -780,6 +804,12 @@ public class InputKernel {
         if (top != null) {
             // An action-level undo is always preferred to raw byte delete.
             state.cancel();
+            if (top.type == InputAction.Type.HANZI_PICK) {
+                removeLastPendingContextChoice();
+                if (!selectionTokenIds.isEmpty()) {
+                    selectionTokenIds.remove(selectionTokenIds.size() - 1);
+                }
+            }
         } else if (!state.buffer.isEmpty()) {
             // No action on the stack — drop the last char of buffer. If
             // it was inside the letter region, shrink lettersEnd.
@@ -794,6 +824,10 @@ public class InputKernel {
         } else if (!state.selections.isEmpty()) {
             // Degenerate fallback: pop a selection.
             state.selections.remove(state.selections.size() - 1);
+            removeLastPendingContextChoice();
+            if (!selectionTokenIds.isEmpty()) {
+                selectionTokenIds.remove(selectionTokenIds.size() - 1);
+            }
         }
 
         if (state.isEmpty()) {
@@ -829,6 +863,7 @@ public class InputKernel {
         if (state.fullySelected()) {
             String out = state.committedText();
             learnCompletedSentence(out);
+            flushPendingContextChoices();
             fireCommitText(out);
             if (!privateField) {
                 decoder.learnUserSentence(state.contextIdsArray(), c.tokenIds);
@@ -836,6 +871,7 @@ public class InputKernel {
             resetAll();
         } else {
             // Flush the committed portion so the app sees it immediately.
+            flushPendingContextChoices();
             fireCommitText(state.committedText());
             // Keep only the remaining raw tail as a fresh state.
             String rem = state.remaining();
@@ -910,11 +946,19 @@ public class InputKernel {
             dismissPunctuationPicker(/*publish=*/true);
             return;
         }
+        // A manual candidate tap is a positive learning signal. Capture the
+        // preceding token context before adding this selection, so the same
+        // preference can be recognized when a later sentence reaches it.
+        if (!privateField && contextualSelectionMemory != null) {
+            pendingContextChoices.add(new PendingContextChoice(
+                    c.units, c.text, currentLearningContext(), c.tokenIds));
+        }
         state.select(tradTextOf(c), c.units, c.consumed);
         selectionTokenIds.add(c.tokenIds);
         if (state.fullySelected()) {
             String out = state.committedText();
             learnCompletedSentence(out);
+            flushPendingContextChoices();
             fireCommitText(out);
             previousCommitEndsWithAsciiWord = endsWithAsciiWord(out);
             // Learn each selection in turn so the engine's per-call
@@ -1029,6 +1073,7 @@ public class InputKernel {
             } else {
                 tail = state.remaining();
             }
+            flushPendingContextChoices();
             fireCommitText(committed + tail);
             resetInput();
         }
@@ -1131,6 +1176,12 @@ public class InputKernel {
             }
         }
 
+        // Keep decoder results separate from the exact-sentence and personal-
+        // dictionary candidates above. Contextual learning is allowed to
+        // reorder only native decoder results; it must never displace an exact
+        // sentence that the user previously confirmed and that the sentence
+        // memory deliberately prepended at score 0.
+        List<DecodeResult> decoded = new ArrayList<>(raw.length);
         for (DecodeResult r : raw) {
             String text = r.text != null ? r.text : "";
             if (text.isEmpty()) continue;
@@ -1140,9 +1191,17 @@ public class InputKernel {
             if (!seenKeys.add(key)) continue;
             DecodeResult c = new DecodeResult(text, r.units != null ? r.units : "", consumed, r.tokenIds,
                     r.score, r.fuzzyMatchCount, r.fuzzyPenalty);
-            out.add(c);
-            if (topCandidate == null) topCandidate = c;
+            decoded.add(c);
         }
+        // Contextual memory only reorders candidates already produced by the
+        // decoder. It neither injects candidates nor reorders exact sentence
+        // memories / personal dictionary entries. Explicit candidate-tuning
+        // rules run afterwards and retain their higher priority.
+        if (!privateField && contextualSelectionMemory != null) {
+            decoded = new ArrayList<>(contextualSelectionMemory.apply(
+                    decoded, currentLearningContext()));
+        }
+        out.addAll(decoded);
         if (tuning != null) out = new ArrayList<>(tuning.apply(out));
         topCandidate = out.isEmpty() ? null : out.get(0);
         candidates = out;
@@ -1359,6 +1418,61 @@ public class InputKernel {
         return layoutId + (traditionalEnabled ? "_TRAD" : "_SIMPLIFIED");
     }
 
+    /** Persist only selections that survived until their text was committed. */
+    private void flushPendingContextChoices() {
+        if (!privateField && contextualSelectionMemory != null) {
+            for (int i = 0; i < pendingContextChoices.size(); i++) {
+                PendingContextChoice choice = pendingContextChoices.get(i);
+                contextualSelectionMemory.learn(choice.pinyin, choice.text,
+                        choice.context, choice.tokenIds, followingTokenContext(i));
+            }
+        }
+        pendingContextChoices.clear();
+    }
+
+    private void removeLastPendingContextChoice() {
+        if (!pendingContextChoices.isEmpty()) {
+            pendingContextChoices.remove(pendingContextChoices.size() - 1);
+        }
+    }
+
+    /** Collect up to two token IDs selected after the given segment. */
+    private int[] followingTokenContext(int choiceIndex) {
+        int[] result = new int[2];
+        int count = 0;
+        for (int i = choiceIndex + 1;
+                i < pendingContextChoices.size() && count < result.length; i++) {
+            int[] tokens = pendingContextChoices.get(i).tokenIds;
+            if (tokens == null) continue;
+            for (int token : tokens) {
+                result[count++] = token;
+                if (count == result.length) break;
+            }
+        }
+        if (count == result.length) return result;
+        int[] trimmed = new int[count];
+        System.arraycopy(result, 0, trimmed, 0, count);
+        return trimmed;
+    }
+
+    /**
+     * Context visible at the current selection point: committed history plus
+     * earlier manually selected segments in the current composition.
+     */
+    private int[] currentLearningContext() {
+        List<Integer> ids = new ArrayList<>(state.contextIds);
+        for (int[] selected : selectionTokenIds) {
+            if (selected == null) continue;
+            for (int token : selected) ids.add(token);
+        }
+        int keep = Math.min(2, ids.size());
+        int[] result = new int[keep];
+        for (int i = 0; i < keep; i++) {
+            result[i] = ids.get(ids.size() - keep + i);
+        }
+        return result;
+    }
+
     /** Save the exact input code and chosen pinyin for a fully selected sentence. */
     private void learnCompletedSentence(String text) {
         if (privateField || learnedSentenceStore == null || state.selections.isEmpty()) return;
@@ -1375,6 +1489,7 @@ public class InputKernel {
     private void resetInput() {
         state.reset();
         selectionTokenIds.clear();
+        pendingContextChoices.clear();
         pinyinAlts = Collections.emptyList();
         topUnits = "";
         inPunctuationPicker = false;
@@ -1430,6 +1545,7 @@ public class InputKernel {
     private void resetAll() {
         state.reset();
         selectionTokenIds.clear();
+        pendingContextChoices.clear();
         candidates = Collections.emptyList();
         pinyinAlts = Collections.emptyList();
         topUnits = "";
